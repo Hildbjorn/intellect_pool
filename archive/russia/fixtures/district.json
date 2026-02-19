@@ -1,0 +1,90 @@
+[
+  {
+    "model": "core.district",
+    "pk": 1,
+    "fields": {
+      "district": "Центральный",
+      "district_short": "ЦФО",
+      "slug": "tsentralnyy",
+      "created_at": "2026-02-19T22:43:42.224796",
+      "updated_at": "2026-02-19T22:43:42.224796"
+    }
+  },
+  {
+    "model": "core.district",
+    "pk": 2,
+    "fields": {
+      "district": "Северо-Западный",
+      "district_short": "СЗФО",
+      "slug": "severo-zapadnyy",
+      "created_at": "2026-02-19T22:43:42.225793",
+      "updated_at": "2026-02-19T22:43:42.225793"
+    }
+  },
+  {
+    "model": "core.district",
+    "pk": 3,
+    "fields": {
+      "district": "Южный",
+      "district_short": "ЮФО",
+      "slug": "yuzhnyy",
+      "created_at": "2026-02-19T22:43:42.225793",
+      "updated_at": "2026-02-19T22:43:42.225793"
+    }
+  },
+  {
+    "model": "core.district",
+    "pk": 4,
+    "fields": {
+      "district": "Северо-Кавказский",
+      "district_short": "СКФО",
+      "slug": "severo-kavkazskiy",
+      "created_at": "2026-02-19T22:43:42.225793",
+      "updated_at": "2026-02-19T22:43:42.225793"
+    }
+  },
+  {
+    "model": "core.district",
+    "pk": 5,
+    "fields": {
+      "district": "Приволжский",
+      "district_short": "ПФО",
+      "slug": "privolzhskiy",
+      "created_at": "2026-02-19T22:43:42.225793",
+      "updated_at": "2026-02-19T22:43:42.225793"
+    }
+  },
+  {
+    "model": "core.district",
+    "pk": 6,
+    "fields": {
+      "district": "Уральский",
+      "district_short": "УрФО",
+      "slug": "uralskiy",
+      "created_at": "2026-02-19T22:43:42.225793",
+      "updated_at": "2026-02-19T22:43:42.225793"
+    }
+  },
+  {
+    "model": "core.district",
+    "pk": 7,
+    "fields": {
+      "district": "Сибирский",
+      "district_short": "СФО",
+      "slug": "sibirskiy",
+      "created_at": "2026-02-19T22:43:42.225793",
+      "updated_at": "2026-02-19T22:43:42.225793"
+    }
+  },
+  {
+    "model": "core.district",
+    "pk": 8,
+    "fields": {
+      "district": "Дальневосточный",
+      "district_short": "ДВФО",
+      "slug": "dalnevostochnyy",
+      "created_at": "2026-02-19T22:43:42.225793",
+      "updated_at": "2026-02-19T22:43:42.225793"
+    }
+  }
+]

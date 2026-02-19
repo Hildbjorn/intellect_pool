@@ -1,0 +1,937 @@
+[
+  {
+    "model": "core.region",
+    "pk": 37,
+    "fields": {
+      "title": "Амурская область",
+      "district": 8,
+      "slug": "amurskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.236390",
+      "updated_at": "2026-02-19T22:43:42.236390"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 83,
+    "fields": {
+      "title": "Еврейская Автономная область",
+      "district": 8,
+      "slug": "evreyskaya-avtonomnaya-oblast",
+      "created_at": "2026-02-19T22:43:42.237871",
+      "updated_at": "2026-02-19T22:43:42.237871"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 29,
+    "fields": {
+      "title": "Забайкальский край",
+      "district": 8,
+      "slug": "zabaykalskiy-kray",
+      "created_at": "2026-02-19T22:43:42.237871",
+      "updated_at": "2026-02-19T22:43:42.237871"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 30,
+    "fields": {
+      "title": "Камчатский край",
+      "district": 8,
+      "slug": "kamchatskiy-kray",
+      "created_at": "2026-02-19T22:43:42.237871",
+      "updated_at": "2026-02-19T22:43:42.237871"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 57,
+    "fields": {
+      "title": "Магаданская область",
+      "district": 8,
+      "slug": "magadanskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.238872",
+      "updated_at": "2026-02-19T22:43:42.238872"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 34,
+    "fields": {
+      "title": "Приморский край",
+      "district": 8,
+      "slug": "primorskiy-kray",
+      "created_at": "2026-02-19T22:43:42.238872",
+      "updated_at": "2026-02-19T22:43:42.238872"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 10,
+    "fields": {
+      "title": "Республика Бурятия",
+      "district": 8,
+      "slug": "respublika-buryatiya",
+      "created_at": "2026-02-19T22:43:42.238872",
+      "updated_at": "2026-02-19T22:43:42.238872"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 20,
+    "fields": {
+      "title": "Республика Саха (Якутия)",
+      "district": 8,
+      "slug": "respublika-sakha-yakutiya",
+      "created_at": "2026-02-19T22:43:42.238872",
+      "updated_at": "2026-02-19T22:43:42.238872"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 72,
+    "fields": {
+      "title": "Сахалинская область",
+      "district": 8,
+      "slug": "sakhalinskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.238872",
+      "updated_at": "2026-02-19T22:43:42.238872"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 36,
+    "fields": {
+      "title": "Хабаровский край",
+      "district": 8,
+      "slug": "khabarovskiy-kray",
+      "created_at": "2026-02-19T22:43:42.239869",
+      "updated_at": "2026-02-19T22:43:42.239869"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 86,
+    "fields": {
+      "title": "Чукотский Автономная область",
+      "district": 8,
+      "slug": "chukotskiy-avtonomnaya-oblast",
+      "created_at": "2026-02-19T22:43:42.239869",
+      "updated_at": "2026-02-19T22:43:42.239869"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 51,
+    "fields": {
+      "title": "Кировская область",
+      "district": 5,
+      "slug": "kirovskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.239869",
+      "updated_at": "2026-02-19T22:43:42.239869"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 61,
+    "fields": {
+      "title": "Нижегородская область",
+      "district": 5,
+      "slug": "nizhegorodskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.239869",
+      "updated_at": "2026-02-19T22:43:42.239869"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 2,
+    "fields": {
+      "title": "Оренбургская область",
+      "district": 5,
+      "slug": "orenburgskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.239869",
+      "updated_at": "2026-02-19T22:43:42.239869"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 66,
+    "fields": {
+      "title": "Пензенская область",
+      "district": 5,
+      "slug": "penzenskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.239869",
+      "updated_at": "2026-02-19T22:43:42.239869"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 33,
+    "fields": {
+      "title": "Пермский край",
+      "district": 5,
+      "slug": "permskiy-kray",
+      "created_at": "2026-02-19T22:43:42.240868",
+      "updated_at": "2026-02-19T22:43:42.240868"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 9,
+    "fields": {
+      "title": "Республика Башкортостан",
+      "district": 5,
+      "slug": "respublika-bashkortostan",
+      "created_at": "2026-02-19T22:43:42.240868",
+      "updated_at": "2026-02-19T22:43:42.240868"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 18,
+    "fields": {
+      "title": "Республика Марий Эл",
+      "district": 5,
+      "slug": "respublika-mariy-el",
+      "created_at": "2026-02-19T22:43:42.240868",
+      "updated_at": "2026-02-19T22:43:42.240868"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 19,
+    "fields": {
+      "title": "Республика Мордовия",
+      "district": 5,
+      "slug": "respublika-mordoviya",
+      "created_at": "2026-02-19T22:43:42.240868",
+      "updated_at": "2026-02-19T22:43:42.240868"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 22,
+    "fields": {
+      "title": "Республика Татарстан",
+      "district": 5,
+      "slug": "respublika-tatarstan",
+      "created_at": "2026-02-19T22:43:42.240868",
+      "updated_at": "2026-02-19T22:43:42.240868"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 95,
+    "fields": {
+      "title": "Самарская область",
+      "district": 5,
+      "slug": "samarskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.240868",
+      "updated_at": "2026-02-19T22:43:42.240868"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 71,
+    "fields": {
+      "title": "Саратовская область",
+      "district": 5,
+      "slug": "saratovskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.241915",
+      "updated_at": "2026-02-19T22:43:42.241915"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 24,
+    "fields": {
+      "title": "Удмуртская Республика",
+      "district": 5,
+      "slug": "udmurtskaya-respublika",
+      "created_at": "2026-02-19T22:43:42.241915",
+      "updated_at": "2026-02-19T22:43:42.241915"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 80,
+    "fields": {
+      "title": "Ульяновская область",
+      "district": 5,
+      "slug": "ulyanovskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.241915",
+      "updated_at": "2026-02-19T22:43:42.241915"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 27,
+    "fields": {
+      "title": "Чувашская Республика - Чувашия",
+      "district": 5,
+      "slug": "chuvashskaya-respublika-chuvashiya",
+      "created_at": "2026-02-19T22:43:42.241915",
+      "updated_at": "2026-02-19T22:43:42.241915"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 38,
+    "fields": {
+      "title": "Архангельская область",
+      "district": 2,
+      "slug": "arkhangelskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.241915",
+      "updated_at": "2026-02-19T22:43:42.241915"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 44,
+    "fields": {
+      "title": "Вологодская область",
+      "district": 2,
+      "slug": "vologodskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.242935",
+      "updated_at": "2026-02-19T22:43:42.242935"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 48,
+    "fields": {
+      "title": "Калининградская область",
+      "district": 2,
+      "slug": "kaliningradskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.242935",
+      "updated_at": "2026-02-19T22:43:42.242935"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 55,
+    "fields": {
+      "title": "Ленинградская область",
+      "district": 2,
+      "slug": "leningradskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.242935",
+      "updated_at": "2026-02-19T22:43:42.242935"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 60,
+    "fields": {
+      "title": "Мурманская область",
+      "district": 2,
+      "slug": "murmanskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.242935",
+      "updated_at": "2026-02-19T22:43:42.242935"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 84,
+    "fields": {
+      "title": "Ненецкий Автономная область",
+      "district": 2,
+      "slug": "nenetskiy-avtonomnaya-oblast",
+      "created_at": "2026-02-19T22:43:42.242935",
+      "updated_at": "2026-02-19T22:43:42.242935"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 62,
+    "fields": {
+      "title": "Новгородская область",
+      "district": 2,
+      "slug": "novgorodskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.242935",
+      "updated_at": "2026-02-19T22:43:42.242935"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 67,
+    "fields": {
+      "title": "Псковская область",
+      "district": 2,
+      "slug": "pskovskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.243882",
+      "updated_at": "2026-02-19T22:43:42.243882"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 16,
+    "fields": {
+      "title": "Республика Карелия",
+      "district": 2,
+      "slug": "respublika-kareliya",
+      "created_at": "2026-02-19T22:43:42.243882",
+      "updated_at": "2026-02-19T22:43:42.243882"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 17,
+    "fields": {
+      "title": "Республика Коми",
+      "district": 2,
+      "slug": "respublika-komi",
+      "created_at": "2026-02-19T22:43:42.243882",
+      "updated_at": "2026-02-19T22:43:42.243882"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 89,
+    "fields": {
+      "title": "Санкт-Петербург",
+      "district": 2,
+      "slug": "sankt-peterburg",
+      "created_at": "2026-02-19T22:43:42.243882",
+      "updated_at": "2026-02-19T22:43:42.243882"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 13,
+    "fields": {
+      "title": "Кабардино-Балкарская Республика",
+      "district": 6,
+      "slug": "kabardino-balkarskaya-respublika",
+      "created_at": "2026-02-19T22:43:42.243882",
+      "updated_at": "2026-02-19T22:43:42.243882"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 15,
+    "fields": {
+      "title": "Карачаево-Черкесская Республика",
+      "district": 6,
+      "slug": "karachaevo-cherkesskaya-respublika",
+      "created_at": "2026-02-19T22:43:42.244911",
+      "updated_at": "2026-02-19T22:43:42.244911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 11,
+    "fields": {
+      "title": "Республика Дагестан",
+      "district": 6,
+      "slug": "respublika-dagestan",
+      "created_at": "2026-02-19T22:43:42.244911",
+      "updated_at": "2026-02-19T22:43:42.244911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 12,
+    "fields": {
+      "title": "Республика Ингушетия",
+      "district": 6,
+      "slug": "respublika-ingushetiya",
+      "created_at": "2026-02-19T22:43:42.244911",
+      "updated_at": "2026-02-19T22:43:42.244911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 21,
+    "fields": {
+      "title": "Республика Северная Осетия - Алания",
+      "district": 6,
+      "slug": "respublika-severnaya-osetiya-alaniya",
+      "created_at": "2026-02-19T22:43:42.244911",
+      "updated_at": "2026-02-19T22:43:42.244911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 35,
+    "fields": {
+      "title": "Ставропольский край",
+      "district": 6,
+      "slug": "stavropolskiy-kray",
+      "created_at": "2026-02-19T22:43:42.244911",
+      "updated_at": "2026-02-19T22:43:42.244911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 26,
+    "fields": {
+      "title": "Чеченская Республика",
+      "district": 6,
+      "slug": "chechenskaya-respublika",
+      "created_at": "2026-02-19T22:43:42.244911",
+      "updated_at": "2026-02-19T22:43:42.244911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 28,
+    "fields": {
+      "title": "Алтайский край",
+      "district": 7,
+      "slug": "altayskiy-kray",
+      "created_at": "2026-02-19T22:43:42.244911",
+      "updated_at": "2026-02-19T22:43:42.244911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 47,
+    "fields": {
+      "title": "Иркутская область",
+      "district": 7,
+      "slug": "irkutskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.245912",
+      "updated_at": "2026-02-19T22:43:42.245912"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 50,
+    "fields": {
+      "title": "Кемеровская область - Кузбасс",
+      "district": 7,
+      "slug": "kemerovskaya-oblast-kuzbass",
+      "created_at": "2026-02-19T22:43:42.245912",
+      "updated_at": "2026-02-19T22:43:42.245912"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 32,
+    "fields": {
+      "title": "Красноярский край",
+      "district": 7,
+      "slug": "krasnoyarskiy-kray",
+      "created_at": "2026-02-19T22:43:42.245912",
+      "updated_at": "2026-02-19T22:43:42.245912"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 63,
+    "fields": {
+      "title": "Новосибирская область",
+      "district": 7,
+      "slug": "novosibirskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.245912",
+      "updated_at": "2026-02-19T22:43:42.245912"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 64,
+    "fields": {
+      "title": "Омская область",
+      "district": 7,
+      "slug": "omskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.245912",
+      "updated_at": "2026-02-19T22:43:42.245912"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 8,
+    "fields": {
+      "title": "Республика Алтай",
+      "district": 7,
+      "slug": "respublika-altay",
+      "created_at": "2026-02-19T22:43:42.245912",
+      "updated_at": "2026-02-19T22:43:42.245912"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 23,
+    "fields": {
+      "title": "Республика Тыва",
+      "district": 7,
+      "slug": "respublika-tyva",
+      "created_at": "2026-02-19T22:43:42.246912",
+      "updated_at": "2026-02-19T22:43:42.246912"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 25,
+    "fields": {
+      "title": "Республика Хакасия",
+      "district": 7,
+      "slug": "respublika-khakasiya",
+      "created_at": "2026-02-19T22:43:42.246912",
+      "updated_at": "2026-02-19T22:43:42.246912"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 77,
+    "fields": {
+      "title": "Томская область",
+      "district": 7,
+      "slug": "tomskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.246912",
+      "updated_at": "2026-02-19T22:43:42.246912"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 53,
+    "fields": {
+      "title": "Курганская область",
+      "district": 4,
+      "slug": "kurganskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.246912",
+      "updated_at": "2026-02-19T22:43:42.246912"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 73,
+    "fields": {
+      "title": "Свердловская область",
+      "district": 4,
+      "slug": "sverdlovskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.246912",
+      "updated_at": "2026-02-19T22:43:42.246912"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 79,
+    "fields": {
+      "title": "Тюменская область",
+      "district": 4,
+      "slug": "tyumenskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.246912",
+      "updated_at": "2026-02-19T22:43:42.246912"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 85,
+    "fields": {
+      "title": "Ханты-Мансийский Автономный округ - Югра",
+      "district": 4,
+      "slug": "khanty-mansiyskiy-avtonomnyy-okrug-yugra",
+      "created_at": "2026-02-19T22:43:42.247909",
+      "updated_at": "2026-02-19T22:43:42.247909"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 81,
+    "fields": {
+      "title": "Челябинская область",
+      "district": 4,
+      "slug": "chelyabinskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.247909",
+      "updated_at": "2026-02-19T22:43:42.247909"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 87,
+    "fields": {
+      "title": "Ямало-Ненецкий Автономная область",
+      "district": 4,
+      "slug": "yamalo-nenetskiy-avtonomnaya-oblast",
+      "created_at": "2026-02-19T22:43:42.247909",
+      "updated_at": "2026-02-19T22:43:42.247909"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 40,
+    "fields": {
+      "title": "Белгородская область",
+      "district": 1,
+      "slug": "belgorodskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.247909",
+      "updated_at": "2026-02-19T22:43:42.247909"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 41,
+    "fields": {
+      "title": "Брянская область",
+      "district": 1,
+      "slug": "bryanskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.247909",
+      "updated_at": "2026-02-19T22:43:42.247909"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 42,
+    "fields": {
+      "title": "Владимирская область",
+      "district": 1,
+      "slug": "vladimirskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.247909",
+      "updated_at": "2026-02-19T22:43:42.247909"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 45,
+    "fields": {
+      "title": "Воронежская область",
+      "district": 1,
+      "slug": "voronezhskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.247909",
+      "updated_at": "2026-02-19T22:43:42.247909"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 46,
+    "fields": {
+      "title": "Ивановская область",
+      "district": 1,
+      "slug": "ivanovskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.248911",
+      "updated_at": "2026-02-19T22:43:42.248911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 49,
+    "fields": {
+      "title": "Калужская область",
+      "district": 1,
+      "slug": "kaluzhskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.248911",
+      "updated_at": "2026-02-19T22:43:42.248911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 52,
+    "fields": {
+      "title": "Костромская область",
+      "district": 1,
+      "slug": "kostromskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.248911",
+      "updated_at": "2026-02-19T22:43:42.248911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 54,
+    "fields": {
+      "title": "Курская область",
+      "district": 1,
+      "slug": "kurskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.248911",
+      "updated_at": "2026-02-19T22:43:42.248911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 56,
+    "fields": {
+      "title": "Липецкая область",
+      "district": 1,
+      "slug": "lipetskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.248911",
+      "updated_at": "2026-02-19T22:43:42.248911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 110,
+    "fields": {
+      "title": "Москва",
+      "district": 1,
+      "slug": "moskva",
+      "created_at": "2026-02-19T22:43:42.248911",
+      "updated_at": "2026-02-19T22:43:42.248911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 88,
+    "fields": {
+      "title": "Московская область",
+      "district": 1,
+      "slug": "moskovskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.249911",
+      "updated_at": "2026-02-19T22:43:42.249911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 65,
+    "fields": {
+      "title": "Орловская область",
+      "district": 1,
+      "slug": "orlovskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.249911",
+      "updated_at": "2026-02-19T22:43:42.249911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 69,
+    "fields": {
+      "title": "Рязанская область",
+      "district": 1,
+      "slug": "ryazanskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.249911",
+      "updated_at": "2026-02-19T22:43:42.249911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 94,
+    "fields": {
+      "title": "Смоленская область",
+      "district": 1,
+      "slug": "smolenskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.249911",
+      "updated_at": "2026-02-19T22:43:42.249911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 75,
+    "fields": {
+      "title": "Тамбовская область",
+      "district": 1,
+      "slug": "tambovskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.249911",
+      "updated_at": "2026-02-19T22:43:42.249911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 76,
+    "fields": {
+      "title": "Тверская область",
+      "district": 1,
+      "slug": "tverskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.249911",
+      "updated_at": "2026-02-19T22:43:42.249911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 78,
+    "fields": {
+      "title": "Тульская область",
+      "district": 1,
+      "slug": "tulskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.249911",
+      "updated_at": "2026-02-19T22:43:42.249911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 82,
+    "fields": {
+      "title": "Ярославская область",
+      "district": 1,
+      "slug": "yaroslavskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.250911",
+      "updated_at": "2026-02-19T22:43:42.250911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 39,
+    "fields": {
+      "title": "Астраханская область",
+      "district": 3,
+      "slug": "astrakhanskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.250911",
+      "updated_at": "2026-02-19T22:43:42.250911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 43,
+    "fields": {
+      "title": "Волгоградская область",
+      "district": 3,
+      "slug": "volgogradskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.250911",
+      "updated_at": "2026-02-19T22:43:42.250911"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 31,
+    "fields": {
+      "title": "Краснодарский край",
+      "district": 3,
+      "slug": "krasnodarskiy-kray",
+      "created_at": "2026-02-19T22:43:42.251871",
+      "updated_at": "2026-02-19T22:43:42.251871"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 7,
+    "fields": {
+      "title": "Республика Адыгея",
+      "district": 3,
+      "slug": "respublika-adygeya",
+      "created_at": "2026-02-19T22:43:42.251871",
+      "updated_at": "2026-02-19T22:43:42.251871"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 14,
+    "fields": {
+      "title": "Республика Калмыкия",
+      "district": 3,
+      "slug": "respublika-kalmykiya",
+      "created_at": "2026-02-19T22:43:42.251871",
+      "updated_at": "2026-02-19T22:43:42.251871"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 111,
+    "fields": {
+      "title": "Республика Крым",
+      "district": 3,
+      "slug": "respublika-krym",
+      "created_at": "2026-02-19T22:43:42.251871",
+      "updated_at": "2026-02-19T22:43:42.251871"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 68,
+    "fields": {
+      "title": "Ростовская область",
+      "district": 3,
+      "slug": "rostovskaya-oblast",
+      "created_at": "2026-02-19T22:43:42.251871",
+      "updated_at": "2026-02-19T22:43:42.251871"
+    }
+  },
+  {
+    "model": "core.region",
+    "pk": 112,
+    "fields": {
+      "title": "Севастополь",
+      "district": 3,
+      "slug": "sevastopol",
+      "created_at": "2026-02-19T22:43:42.252868",
+      "updated_at": "2026-02-19T22:43:42.252868"
+    }
+  }
+]
