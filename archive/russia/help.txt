@@ -1,0 +1,16 @@
+# Базовое использование
+python excel_to_fixtures.py russia.xlsx
+
+# С указанием выходной директории и читаемым JSON
+python excel_to_fixtures.py russia.xlsx --output fixtures --pretty
+
+# С указанием кодировки (если проблемы с русскими буквами)
+python excel_to_fixtures.py russia.xlsx --encoding cp1251
+
+# Просмотр справки
+python excel_to_fixtures.py --help
+
+# Загружаем в правильном порядке
+python manage.py loaddata fixtures/district.json
+python manage.py loaddata fixtures/region.json
+python manage.py loaddata fixtures/city.json
