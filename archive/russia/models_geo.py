@@ -38,7 +38,6 @@ class District(models.Model):
     )
 
     class Meta:
-        db_table = 'core_district'
         verbose_name = 'Федеральный округ'
         verbose_name_plural = 'Федеральные округа'
         ordering = ['district']
@@ -88,7 +87,6 @@ class Region(models.Model):
     )
 
     class Meta:
-        db_table = 'core_region'
         verbose_name = 'Регион'
         verbose_name_plural = 'Регионы'
         ordering = ['title']
@@ -148,7 +146,6 @@ class City(models.Model):
     )
 
     class Meta:
-        db_table = 'core_city'
         verbose_name = 'Город'
         verbose_name_plural = 'Города'
         ordering = ['city']

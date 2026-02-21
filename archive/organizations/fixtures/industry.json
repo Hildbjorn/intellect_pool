@@ -1,0 +1,212 @@
+[
+  {
+    "model": "core.industry",
+    "pk": 1,
+    "fields": {
+      "industry": "Авиационная промышленность",
+      "slug": "aviatsionnaya-promyshlennost",
+      "created_at": "2026-02-21T13:51:05.639478",
+      "updated_at": "2026-02-21T13:51:05.639482"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 2,
+    "fields": {
+      "industry": "Автомобильная промышленность и железнодорожное машиностроение",
+      "slug": "avtomobilnaya-promyshlennost-i-zheleznodorozhnoe-mashinostroenie",
+      "created_at": "2026-02-21T13:51:05.639562",
+      "updated_at": "2026-02-21T13:51:05.639563"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 3,
+    "fields": {
+      "industry": "Атомная промышленность",
+      "slug": "atomnaya-promyshlennost",
+      "created_at": "2026-02-21T13:51:05.639597",
+      "updated_at": "2026-02-21T13:51:05.639597"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 4,
+    "fields": {
+      "industry": "Беспилотные системы и робототехника",
+      "slug": "bespilotnye-sistemy-i-robototekhnika",
+      "created_at": "2026-02-21T13:51:05.639623",
+      "updated_at": "2026-02-21T13:51:05.639624"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 5,
+    "fields": {
+      "industry": "Легкая промышленность и лесопромышленный комплекс",
+      "slug": "legkaya-promyshlennost-i-lesopromyshlennyy-kompleks",
+      "created_at": "2026-02-21T13:51:05.639649",
+      "updated_at": "2026-02-21T13:51:05.639649"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 6,
+    "fields": {
+      "industry": "Машиностроение для топливно-энергетического комплекса",
+      "slug": "mashinostroenie-dlya-toplivno-energeticheskogo-kompleksa",
+      "created_at": "2026-02-21T13:51:05.639672",
+      "updated_at": "2026-02-21T13:51:05.639673"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 7,
+    "fields": {
+      "industry": "Медицинская промышленность",
+      "slug": "meditsinskaya-promyshlennost",
+      "created_at": "2026-02-21T13:51:05.639693",
+      "updated_at": "2026-02-21T13:51:05.639694"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 8,
+    "fields": {
+      "industry": "Межотраслевые предприятия и организации",
+      "slug": "mezhotraslevye-predpriyatiya-i-organizatsii",
+      "created_at": "2026-02-21T13:51:05.639715",
+      "updated_at": "2026-02-21T13:51:05.639716"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 9,
+    "fields": {
+      "industry": "Металлургия и материалы",
+      "slug": "metallurgiya-i-materialy",
+      "created_at": "2026-02-21T13:51:05.639735",
+      "updated_at": "2026-02-21T13:51:05.639736"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 10,
+    "fields": {
+      "industry": "Наука и научное обслуживание",
+      "slug": "nauka-i-nauchnoe-obsluzhivanie",
+      "created_at": "2026-02-21T13:51:05.639755",
+      "updated_at": "2026-02-21T13:51:05.639756"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 11,
+    "fields": {
+      "industry": "Образование",
+      "slug": "obrazovanie",
+      "created_at": "2026-02-21T13:51:05.639775",
+      "updated_at": "2026-02-21T13:51:05.639775"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 12,
+    "fields": {
+      "industry": "Промышленность боеприпасов и спецхимии",
+      "slug": "promyshlennost-boepripasov-i-spetskhimii",
+      "created_at": "2026-02-21T13:51:05.639796",
+      "updated_at": "2026-02-21T13:51:05.639797"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 13,
+    "fields": {
+      "industry": "Промышленность обычных вооружений",
+      "slug": "promyshlennost-obychnykh-vooruzheniy",
+      "created_at": "2026-02-21T13:51:05.639817",
+      "updated_at": "2026-02-21T13:51:05.639817"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 14,
+    "fields": {
+      "industry": "Промышленность транспортного и специального машиностроения",
+      "slug": "promyshlennost-transportnogo-i-spetsialnogo-mashinostroeniya",
+      "created_at": "2026-02-21T13:51:05.639838",
+      "updated_at": "2026-02-21T13:51:05.639838"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 15,
+    "fields": {
+      "industry": "Прочее",
+      "slug": "prochee",
+      "created_at": "2026-02-21T13:51:05.639856",
+      "updated_at": "2026-02-21T13:51:05.639857"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 16,
+    "fields": {
+      "industry": "Радиоэлектронная промышленность",
+      "slug": "radioelektronnaya-promyshlennost",
+      "created_at": "2026-02-21T13:51:05.639877",
+      "updated_at": "2026-02-21T13:51:05.639877"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 17,
+    "fields": {
+      "industry": "Ракетно-космическая промышленность",
+      "slug": "raketno-kosmicheskaya-promyshlennost",
+      "created_at": "2026-02-21T13:51:05.639897",
+      "updated_at": "2026-02-21T13:51:05.639898"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 18,
+    "fields": {
+      "industry": "Станкостроение и тяжелое машиностроение",
+      "slug": "stankostroenie-i-tyazheloe-mashinostroenie",
+      "created_at": "2026-02-21T13:51:05.639917",
+      "updated_at": "2026-02-21T13:51:05.639918"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 19,
+    "fields": {
+      "industry": "Судостроительная промышленность",
+      "slug": "sudostroitelnaya-promyshlennost",
+      "created_at": "2026-02-21T13:51:05.639942",
+      "updated_at": "2026-02-21T13:51:05.639942"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 20,
+    "fields": {
+      "industry": "Фармацевтическая и медицинская промышленность",
+      "slug": "farmatsevticheskaya-i-meditsinskaya-promyshlennost",
+      "created_at": "2026-02-21T13:51:05.639962",
+      "updated_at": "2026-02-21T13:51:05.639963"
+    }
+  },
+  {
+    "model": "core.industry",
+    "pk": 21,
+    "fields": {
+      "industry": "Химическая промышленность",
+      "slug": "khimicheskaya-promyshlennost",
+      "created_at": "2026-02-21T13:51:05.639981",
+      "updated_at": "2026-02-21T13:51:05.639982"
+    }
+  }
+]
