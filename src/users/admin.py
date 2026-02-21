@@ -59,10 +59,3 @@ class ProfileAdmin(AdminImageMixin, UserAdmin):
     actions = ['activate_users', 'deactivate_users']
 
 
-# Кастомизация заголовков и подписей админки
-admin.site.site_header = _('База данных РИД')
-admin.site.site_title = _('Администрирование РИД')
-admin.site.index_title = _('Панель управления')
-
-# Дополнительные настройки для улучшения интерфейса
-admin.site.enable_nav_sidebar = True  # Включаем боковую навигацию
