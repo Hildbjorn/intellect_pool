@@ -1,0 +1,54 @@
+// Цветовая схема проекта
+
+// Primary — основной цвет (темно-синий)
+$primary: #022456; // Основной акцентный цвет (--button-color-primary)
+
+// Secondary — дополнительный цвет (светло-зеленый) 
+$secondary: #dde1e5; // Соответствует --background-color-tertiary
+
+// Danger — цвет для ошибок и предупреждений (красный)
+$danger: #c90237; // Соответствует --button-color-secondary, --text-color-warn
+
+// Warning — цвет для предупреждений (желтый)
+$warning: #ffb300; // Близко к цвету акцента в Material, адаптирован под схему
+
+// Info — цвет для информационных сообщений (голубой)
+$info: #1e60c1; // Из градиента --background-gradient-accent
+
+// Light — фоновый цвет (очень светлый серый)
+$light: #f3f3f3; // Соответствует --background-color-secondary
+
+// Dark — цвет для текста и важных элементов (темно-синий)
+$dark: #000000; // Основной цвет текста
+
+// Link — цвет для ссылок (синий)
+$link: #022456; // Такой же как primary для консистентности
+
+// Дополнительные цвета
+$text-primary: #000000; // --text-color-primary
+$text-secondary: #ffffff; // --text-color-secondary
+$text-tertiary: #6ca795; // --text-color-tertiary
+$text-accent: #022456; // --text-color-accent
+$text-warn: #c90237; // --text-color-warn
+
+$background-primary: #ffffff; // --background-color-primary
+$background-secondary: #f3f3f3; // --background-color-secondary
+$background-tertiary: #dde1e5; // --background-color-tertiary
+$background-warn: #c90237; // --background-color-warn
+$background-accent: #022456; // --background-color-accent
+$button-primary: #022456; // --button-color-primary
+$button-primary-hover: #2c5694; // --button-color-primaryHover
+$button-primary-active: #07172c; // --button-color-primaryActive
+$button-secondary: #c90237; // --button-color-secondary
+$button-secondary-hover: #e13865; // --button-color-secondaryHover
+$button-secondary-active: #ab0a35; // --button-color-secondaryActive
+
+$border-color-primary: #ffffff; // --border-color-primary
+$border-color-secondary: #f3f3f3; // --border-color-secondary
+$border-color-primary-hover: #022456; // --border-color-primaryHover
+
+$icon-color-primary: #022456; // --icon-color-primary
+$icon-color-secondary: #dde1e5; // --icon-color-secondary
+
+$separator-color-primary: #abafb3; // --separator-color-primary
+$separator-color-secondary: #ffffff4d; // --separator-color-secondary

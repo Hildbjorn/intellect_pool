@@ -1,0 +1,203 @@
+// ██████        ███    ███  ██████  ██████  ███████ ██         ██████  ██████   ██████  
+// ██   ██       ████  ████ ██    ██ ██   ██ ██      ██         ██   ██ ██   ██ ██    ██ 
+// ██████  █████ ██ ████ ██ ██    ██ ██   ██ █████   ██         ██████  ██████  ██    ██ 
+// ██   ██       ██  ██  ██ ██    ██ ██   ██ ██      ██         ██      ██   ██ ██    ██ 
+// ██████        ██      ██  ██████  ██████  ███████ ███████ ██ ██      ██   ██  ██████      Copyright (c) 2024 Artem Fomin
+
+$font-stack: Roboto, sans-serif;
+$avatar_tag_size: 50px;
+$avatar_thumbnail_size: 150px;
+$image_tag_width: 160px;
+$image_tag_height: 90px;
+$image_thumbnail_width: 320px;
+$image_thumbnail_height: 180px;
+$text_field_width: 250px;
+$color_preview_size: 20px;
+
+$size-1: 0.25rem;
+$size-2: 0.5rem;
+$size-3: 1rem;
+$size-4: 1.5rem;
+$size-5: 3rem;
+// ----------------------------------------------------------------------
+// Подключение Bootstrap SCSS
+@import "../bootstrap/scss/bootstrap";
+// Подключение Bootstrap Icons
+@import "../bootstrap/icons/bootstrap-icons.css";
+
+body {
+    font: 100% $font-stack;
+
+    h2,
+    .h2 {
+        font-size: 1.5rem;
+        font-weight: 900;
+    }
+
+    table {
+        caption-side: unset;
+    }
+
+    .deletelink,
+    .cancel-link {
+        height: unset !important;
+    }
+}
+
+#changelist-filter {
+    font-size: $size-3 !important;
+}
+
+#result_list {
+    * {
+        vertical-align: middle;
+    }
+
+    p {
+        margin: 0 !important;
+    }
+
+    .field-avatar_tag {
+        img#avatar_tag {
+            max-width: $avatar_tag_size;
+            max-height: $avatar_tag_size;
+            width: auto;
+            height: auto;
+            object-fit: cover;
+            border-radius: 5px;
+        }
+    }
+
+    .field-image_tag {
+        img#image_tag {
+            max-width: $image_tag_width;
+            max-height: $image_tag_height;
+            width: auto;
+            height: auto;
+            object-fit: cover;
+            border-radius: 5px;
+        }
+    }
+
+    .field-icon_tag {
+        img#icon_tag {
+            max-width: $avatar_tag_size;
+            max-height: $avatar_tag_size;
+            width: auto;
+            height: auto;
+            object-fit: cover;
+            border-radius: 5px;
+        }
+    }
+
+    .field-name {
+        text-wrap: nowrap;
+    }
+}
+
+form {
+    .aligned {
+
+        p,
+        div {
+            .help {
+                margin: 0 0 0 85px;
+                padding: 5px 0 0 35px;
+                font-style: italic;
+            }
+
+        }
+
+        .file-upload {
+            #avatar-clear_id {
+                margin: 0 0 0 1rem;
+
+            }
+
+            label {
+                margin: unset;
+                color: var(--bs-danger);
+            }
+        }
+
+        .flex-container {
+            align-items: baseline;
+        }
+
+        #id_user_permissions {
+            label {
+                max-width: unset;
+            }
+        }
+
+        #avatar_thumbnail {
+            max-width: $avatar_thumbnail_size;
+            max-height: $avatar_thumbnail_size;
+            width: auto;
+            height: auto;
+            object-fit: cover;
+            border-radius: 5px;
+        }
+
+        #image_thumbnail {
+            max-width: $image_thumbnail_width;
+            max-height: $image_thumbnail_height;
+            width: auto;
+            height: auto;
+            object-fit: cover;
+            border-radius: 5px;
+        }
+
+        #icon_thumbnail {
+            max-width: $avatar_thumbnail_size;
+            max-height: $avatar_thumbnail_size;
+            width: auto;
+            height: auto;
+            object-fit: cover;
+            border-radius: 5px;
+        }
+
+        .field-is_superuser {
+            .help {
+                margin: 0 0 0 35px;
+            }
+        }
+
+        .field-groups,
+        .field-user_permissions {
+            .help {
+                margin: 0 0 0 155px;
+            }
+        }
+    }
+}
+
+.aligned label {
+    display: inline !important;
+    white-space: normal !important;
+    width: auto !important;
+    max-width: none !important;
+    text-overflow: clip !important;
+    overflow: visible !important;
+    margin-left: 5px !important;
+}
+
+.field-color_display {
+    width: $text_field_width;
+
+    .color__field {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+
+        .color__preview {
+            width: $color_preview_size;
+            height: $color_preview_size;
+            margin-right: 10px;
+            // border: 1px solid #000;
+            border-radius: 50%;
+        }
+    }
+}
+
+@import "../fonts/fonts.scss";

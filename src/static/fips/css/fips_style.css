@@ -1,0 +1,456 @@
+div#mainDoc img {
+    border-width: 0;
+    margin: 0;
+    padding: 0;
+    vertical-align: text-top;
+}
+
+div#mainDoc table tr td a img.FaxPage {
+    border: 1px double black;
+    padding: 4px;
+    height: 100px;
+    width: 70px;
+    margin: 2px;
+}
+
+div#mainDoc p table {
+    border-color: black !important;
+    margin: 4mm 0 4mm 0;
+    background-color: white;
+    padding: 3px;
+    border-style: solid;
+    border-spacing: 0;
+    border-collapse: collapse;
+    font-size: 0.6rem;
+    width: 100%;
+    border-width: 1px;
+}
+
+div#mainDoc p table.NoBorder {
+    border-style: none;
+}
+
+div#mainDoc p table.NoBorderCHF {
+    border-style: none;
+    display: inline;
+    width: auto;
+    text-indent: 0;
+    vertical-align: middle;
+}
+
+div#mainDoc p table.NoBorderCHF td {
+    margin: 0;
+    padding: 0;
+    border-style: none;
+    border-color: none;
+    border-width: 0;
+}
+
+div#mainDoc p table td {
+    margin: 0;
+    padding: 2px;
+    border-style: solid;
+    border-color: black;
+    border-width: 1px;
+}
+
+div#mainDoc p table.NoBorder td {
+    border-style: none;
+}
+
+div#mainDoc div#gerb {
+    width: 75mm;
+    height: 50mm;
+    left: -5mm;
+    font-size: 0.6rem;
+    text-align: center;
+    font-weight: bold;
+    position: relative;
+    display: inline;
+}
+
+div.topfield {
+    height: 10mm;
+    font-size: 0.75rem;
+    display: inline;
+    vertical-align: top;
+    align: left;
+    position: relative;
+}
+
+div.topfield2 {
+    height: 10mm;
+    font-size: 1.5rem;
+    display: inline;
+    vertical-align: top;
+    align: left;
+    position: relative;
+    font-family: WipoUniExt, "Arial Black", Arial;
+    font-weight: bold;
+}
+
+#top1 {
+    width: 7mm;
+}
+
+#top2 {
+    width: 12mm;
+}
+
+#top3 {
+    width: 7mm;
+}
+
+#top4 {
+    width: 47mm;
+    text-align: right;
+}
+
+#top5 {
+    width: 7mm;
+}
+
+#top6 {
+    width: 10mm;
+}
+
+.top7 {
+    inline: none;
+    height: auto;
+    position: relative;
+    width: 100%;
+    font-size: 0.75rem;
+}
+
+td.IpcTitle {
+    font-size: 0.75rem;
+    text-align: left;
+    text-indent: 0mm;
+}
+
+.IpcTitle div {}
+
+.tp {
+    border-width: 0;
+    margin: 0;
+    background-color: white;
+    padding: 0;
+    width: 100%;
+    border-style: none;
+    border-spacing: 0;
+    border-collapse: collapse;
+}
+
+.tp tr {
+    margin: 0;
+    background-color: white;
+    padding: 0;
+    border-style: none;
+}
+
+.tp tr td {
+    border-width: 0;
+    margin: 0;
+    background-color: white;
+    padding: 0;
+    border-style: none;
+    vertical-align: top;
+}
+
+#NameDoc {
+    width: 100%;
+    height: 5mm;
+    text-align: left;
+}
+
+#NameDocC3 {
+    width: 100%;
+    height: 10mm;
+    text-align: left;
+}
+
+#td1 {
+    width: 75mm;
+    height: 50mm;
+    left: -5mm;
+    font-size: 0.6rem;
+
+    text-align: center;
+    font-weight: bold;
+}
+
+ul.ipc {
+    margin: 0;
+    padding-left: 0;
+    list-style-type: none;
+}
+
+ul.ipc li {
+    margin: 0 0 -0.5mm 0;
+    padding: 0;
+}
+
+ul.ipc li span {
+    font-size: 0.75rem;
+
+    font-style: italic;
+}
+
+ul.ipc li span.i {
+    font-weight: bold;
+}
+
+table#bib {
+    border-width: 0;
+    margin: 0;
+    background-color: white;
+    padding: 0;
+    width: 100%;
+    border-style: none;
+    border-spacing: 0;
+    border-collapse: collapse;
+}
+
+table#bib td {
+    border-top: 1px solid black;
+    border-bottom: 1px solid black;
+    width: 50%;
+    font-size: 0.75rem;
+}
+
+table#bib td#bibl {
+    border-left: 1px solid black;
+    padding: 4mm 0 0 9mm;
+}
+
+table#bib tr {
+    border: 0px none white;
+}
+
+table#bib td {
+    padding: 4mm 1mm 0 7mm;
+    line-height: 130%;
+    vertical-align: top;
+}
+
+table#bib p {
+    text-indent: -7mm;
+    margin: 0 0 3mm 0;
+    padding: 0;
+    font-size: 0.75rem;
+}
+
+table#bib p.prior {
+    margin: 0;
+    padding: 0;
+    text-indent: 0;
+    text-indent: -7mm;
+    font-size: 0.75rem;
+}
+
+table#bib td p {
+    text-indent: -7mm;
+    margin: 0 0 3mm 0;
+    padding: 0;
+}
+
+.key {
+    color: red;
+    font-weight: bold;
+}
+
+span.Nazv {
+    font-size: 0.6rem;
+
+    vertical-align: top;
+    text-align: left;
+}
+
+div#mainDoc p#B542 {
+    font-size: 0.75rem;
+    text-indent: 0;
+    margin: 3mm 0 0 0;
+}
+
+p.B560 {}
+
+div#Abs p {
+    font-size: 1rem;
+    text-align: justify;
+}
+
+p.TitAbs {
+    text-indent: 0;
+    padding: 3mm 0 0 0
+}
+
+div#mainDoc p.TitCla {
+    text-indent: 0;
+    padding: 8mm 0 0 0;
+    text-align: center;
+}
+
+hr {
+    background-color: black;
+    color: black;
+    border: none;
+    height: 1px;
+    clear: both;
+    margin: 0 auto 0 0;
+}
+
+#mainDoc p.NameIzv {
+    font-weight: bold;
+    text-indent: 0;
+    padding: 3mm 0 3mm 0;
+    font-size: 0.75rem;
+}
+
+#mainDoc p.izv {
+    text-indent: -7mm;
+    padding: 0 0 3mm 7mm;
+    font-size: 0.75rem;
+}
+
+#mainDoc p.izv2 {
+    text-indent: 0;
+    padding: 0 0 3mm 0;
+    font-size: 0.75rem;
+}
+
+table#bib td.B002 {
+    padding: 3mm 0 1mm 0;
+    text-indent: 5mm;
+    font-style: italic;
+    text-align: justify;
+    font-size: 0.6rem;
+
+}
+
+table#bib td.spk {
+    padding: 3mm 0 1mm 0;
+    text-indent: 0;
+    text-align: left;
+    font-size: 0.75rem;
+}
+
+table.Status {
+    border: 0px none white;
+    padding: 2px;
+}
+
+table.Status tr td {
+    font-family: WipoUniExt, Arial;
+    padding: 0 4 0 0;
+    font-size: 0.6rem;
+
+    margin: 0 0 0 0;
+    text-align: right;
+    border: 0px none white;
+}
+
+table.Status tr.Green td {
+    background-color: green;
+    color: white;
+}
+
+table.Status tr.Red td {
+    background-color: red;
+    color: white;
+}
+
+table.Status tr.Yellow td {
+    background-color: yellow;
+    color: black;
+}
+
+table.Status tr.Black td {
+    background-color: black;
+    color: white;
+}
+
+table.Status tr.White td {
+    background-color: white;
+    color: black;
+}
+
+td#StatusL {
+    width: 35mm;
+    vertical-align: top;
+}
+
+td#StatusR {
+    text-align: left;
+    width: 130mm;
+}
+
+td#StatusLAP {
+    width: 60mm;
+    vertical-align: top;
+}
+
+td#StatusRAP {
+    text-align: left;
+    width: 105mm;
+}
+
+a {
+    color: blue;
+}
+
+div#mainDoc p.StartIzv {
+    text-indent: 0;
+    padding: 8mm 0 5mm 0;
+    text-align: center;
+}
+
+.NoBold {
+    font-weight: normal;
+}
+
+.TGFaxPage {
+    font-weight: bold;
+    text-align: left;
+    vertical-align: top;
+}
+
+table#delo {
+    border-width: 0;
+    margin: 0;
+    background-color: white;
+    padding: 0;
+    width: 100%;
+    border-style: none;
+    border-spacing: 0;
+    border-collapse: collapse;
+}
+
+table#delo tr {
+    border: 0px none white;
+}
+
+table#delo td {
+    border-top: 1px solid black;
+    border-bottom: 1px solid black;
+    font-size: 1rem;
+    padding: 2mm 2mm 2mm 2mm;
+    line-height: 130%;
+    vertical-align: top;
+}
+
+table#delo td.delotd {
+    border-left: 1px solid black;
+}
+
+table#delo th {
+    border-top: 1px solid black;
+    border-bottom: 1px solid black;
+    font-size: 1rem;
+    padding: 2mm 2mm 2mm 2mm;
+    line-height: 130%;
+    vertical-align: top;
+}
+
+table#delo th.delotd {
+    border-left: 1px solid black;
+}
