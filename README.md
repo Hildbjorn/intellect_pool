@@ -1,7 +1,7 @@
 # Проект "Intellect Pool"
 ## Информационная система научно-технической информации
 
-![Логотип Intellect Pool](https://github.com/Hildbjorn/intellect_pool/blob/main/src/static/img/elements/intellect_pool_logo_blue.png?raw=true)
+![Логотип Intellect Pool](https://github.com/Hildbjorn/intellect_pool/blob/main/src/static/img/elements/logo.png?raw=true)
 
 Автор: [Артем Владимирович Фомин](mailto:afomin@vniicentr.ru)
 

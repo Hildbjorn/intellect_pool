@@ -1,0 +1,20 @@
+{% load static %}
+<!-- ========== ССЫЛКА "РИД" ========== -->
+<!--
+  Пункт главного меню навигации
+  Ведет на страницу со списком РИД
+-->
+
+{% if request.user.is_authenticated %}
+  <li class="nav-item">
+    <a class="nav-link btn btn-sm btn-success text-nowrap {% if request.path == '/rids' %}active{% endif %}"
+      {% if request.path == '/rids' %}
+        aria-current="page"
+      {% else %}
+        aria-current="false"
+      {% endif %}
+      href="#">
+      <i class="bi bi-lightbulb me-2"></i>РИД
+    </a>
+  </li>
+{% endif %}

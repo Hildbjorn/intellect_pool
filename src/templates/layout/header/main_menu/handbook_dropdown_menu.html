@@ -1,0 +1,18 @@
+{% load static %}
+<!-- ========== ВЫПАДАЮЩЕЕ МЕНЮ СПРАВОЧНИКА ========== -->
+<!-- Компонент выпадающего меню "Справочник" Содержит ссылки на различные справочные материалы -->
+<li class="nav-item dropdown">
+  <!-- Кнопка-триггер выпадающего меню -->
+  <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false">
+    <i class="bi bi-question-circle me-2"></i>
+    <span class="text-light">Справочник</span>
+  </a>
+
+  <!-- Содержимое выпадающего меню -->
+  <ul class="dropdown-menu dropdown-menu-lg-end">
+    <!-- Подключаемые пункты меню -->
+    {% include 'layout/header/handbook_dropdown_menu/methodology_link.html' %}
+    {% include 'layout/header/handbook_dropdown_menu/project_stages_link.html' %}
+    {% include 'layout/header/handbook_dropdown_menu/key_markets_link.html' %}
+  </ul>
+</li>

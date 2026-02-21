@@ -1,0 +1,13 @@
+{% load static %}
+<hr class="my-4 border-gray-700" />
+<div class="row align-items-center">
+  <div class="col-md-6 text-center text-md-start mb-3 mb-md-0">
+    <p class="mb-0 small text-muted">
+      &copy; 2025 <a href="https://b-model.pro" class="text-decoration-none text-primary">IdeaHub</a>. Все&nbsp;права&nbsp;защищены.
+    </p>
+  </div>
+  <div class="col-md-6 text-center text-md-end">
+    <a href="{% url 'privacy_policy' %}" class="text-decoration-none text-muted hover-white small me-3" hx-get="{% url 'privacy_policy_modal' %}" hx-target="#largeModal-content" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#largeModal">Политика&nbsp;конфиденциальности</a>
+    <a href="{% url 'user_agreement' %}" class="text-decoration-none text-muted hover-white small me-3" hx-get="{% url 'user_agreement_modal' %}" hx-target="#largeModal-content" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#largeModal">Пользовательское&nbsp;соглашение</a>
+  </div>
+</div>

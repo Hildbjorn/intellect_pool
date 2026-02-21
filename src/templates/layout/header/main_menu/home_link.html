@@ -1,0 +1,19 @@
+{% load static %}
+<!-- ========== ССЫЛКА "ГЛАВНАЯ" ========== -->
+<!--
+  Основной пункт главного меню навигации
+  Ведет на главную страницу
+-->
+
+<li class="nav-item">
+  <a class="nav-link btn btn-sm btn-link text-nowrap {% if request.path == '/#' %}active{% endif %}"
+  {% if request.path == '/#' %}
+      aria-current="page"
+  {% else %}
+      aria-current="false"
+  {% endif %}
+  href="{% url 'index' %}#">
+      <i class="bi bi-house-door me-2 mx-0 mx-xl-2"></i>
+      <span class="d-inline-block d-xl-none text-light">Главная</span>
+  </a>
+</li>

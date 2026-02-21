@@ -1,0 +1,11 @@
+{% load static %}
+<!-- ========== ЛОГОТИП И НАЗВАНИЕ САЙТА ========== -->
+<!-- Компонент бренда в навигационной панели Ссылка на главную страницу -->
+
+<a class="navbar-brand flex-nowrap" href="{% url 'index' %}">
+  <!-- Логотип -->
+  <img id="navbar_brand_logo" src="{% static 'img/elements/logo.webp' %}" alt="IdeaHub" />
+
+  <!-- Название сайта -->
+  <span class="mx-3 fs-4 fw-bold">IdeaHub</span>
+</a>

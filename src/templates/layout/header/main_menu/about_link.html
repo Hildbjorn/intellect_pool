@@ -1,0 +1,18 @@
+{% load static %}
+<!-- ========== ССЫЛКА "О СЕРВИСЕ" ========== -->
+<!--
+  Пункт главного меню навигации
+  Ведет на раздел "О сервисе" на главной странице
+-->
+
+<li class="nav-item">
+  <a class="nav-link btn btn-sm btn-link text-nowrap {% if request.path == '/about' %}active{% endif %}"
+      {% if request.path == '/about' %}
+          aria-current="page"
+      {% else %}
+          aria-current="false"
+      {% endif %}
+      href="{% url 'index' %}#about">
+      <i class="bi bi-info-circle me-2"></i>О&nbsp;сервисе
+  </a>
+</li>

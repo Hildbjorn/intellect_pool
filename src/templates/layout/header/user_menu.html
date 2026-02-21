@@ -1,0 +1,97 @@
+<!-- ==================== МЕНЮ ПОЛЬЗОВАТЕЛЯ ==================== -->
+<!--          
+Компонент отображает: 
+- Для авторизованных: выпадающее меню с профилем и действиями 
+- Для гостей: кнопки входа и регистрации Поддерживает: 
+- Разные варианты для обычных пользователей и администраторов 
+- HTMX для модальных окон авторизации 
+         -->
+{% load static %}
+{% load common_tags %}
+
+<ul class="navbar-nav align-items-xl-center mt-4 mt-xl-0">
+  {% if request.user.is_authenticated %}
+    <!-- ========== МЕНЮ АВТОРИЗОВАННОГО ПОЛЬЗОВАТЕЛЯ ========== -->
+    <li class="nav-item dropdown">
+      <!-- Кнопка-триггер выпадающего меню -->
+      <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false">
+        <i class="bi bi-person-lines-fill fs-4 me-2"></i>
+        <span class="d-inline-block d-xl-none text-light">Меню пользователя</span>
+      </a>
+
+      <!-- Выпадающее меню -->
+      <ul class="dropdown-menu dropdown-menu-lg-end">
+        <!-- Ссылка на профиль -->
+        <li>
+          <a class="dropdown-item"
+            href="{% url 'profile' tab='profile' %}"
+            title="{% if user.first_name and user.last_name %}
+              {{ user.first_name }} {{ user.last_name }}
+            {% else %}
+              {{ user.get_username }}
+            {% endif %}">
+            <i class="bi bi-person-workspace me-2"></i>Профиль
+          </a>
+        </li>
+
+        <!-- ========== АДМИНИСТРАТОРСКИЕ ПУНКТЫ ========== -->
+        {% if request.user.is_authenticated and user.is_superuser %}
+          <li>
+            <hr class="dropdown-divider" />
+          </li>
+
+          <!-- Панель администратора -->
+          <li>
+            <a class="dropdown-item" href="{% url 'admin:index' %}" target="_blank"><b><i class="bi bi-sliders2-vertical me-2"></i>Панель администратора</b></a>
+          </li>
+
+          <!-- Список пользователей -->
+          <li>
+            <a class="dropdown-item" href="{% url 'all_users' %}"><i class="bi bi-people me-2"></i>Все пользователи</a>
+          </li>
+
+          <!-- Проекты (если компонент существует) -->
+          {% if 'projects/components/all_projects_user_menu_item.html'|template_exists %}
+            {% include 'projects/components/all_projects_user_menu_item.html' %}
+          {% endif %}
+
+          <li>
+            <hr class="dropdown-divider" />
+          </li>
+
+          <!-- Удаление неактивных профилей -->
+          <li>
+            <form action="{% url 'delete_inactive_profiles' %}" method="post">
+              {% csrf_token %}
+              <button type="submit" class="dropdown-item text-danger"><i class="bi bi-trash me-2"></i>Удалить неактивных</button>
+            </form>
+          </li>
+        {% endif %}
+        <!-- ========== КОНЕЦ АДМИНИСТРАТОРСКИХ ПУНКТОВ ========== -->
+
+        <!-- Выход из системы -->
+        <li>
+          <hr class="dropdown-divider" />
+        </li>
+        <li>
+          <form id="logout-form" method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button class="dropdown-item" type="submit"><i class="bi bi-box-arrow-right me-2"></i>Выход</button>
+          </form>
+        </li>
+      </ul>
+    </li>
+    <!-- ========== КОНЕЦ МЕНЮ АВТОРИЗОВАННОГО ПОЛЬЗОВАТЕЛЯ ========== -->
+  {% else %}
+    <!-- ========== МЕНЮ ГОСТЯ (кнопки входа/регистрации) ========== -->
+    <li>
+      <div class="d-flex align-self-end align-items-center">
+        <!-- Кнопка входа (HTMX + модальное окно) -->
+        <div type="button" class="btn btn-sm btn-link text-light me-3" role="button" hx-get="{% url 'profile_login_modal' %}?next={% url 'profile' tab='profile' %}" hx-target="#modal-content" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#modal">
+          <i class="bi bi-box-arrow-in-right fs-5 px-1"></i>
+        </div>
+      </div>
+    </li>
+    <!-- ========== КОНЕЦ МЕНЮ ГОСТЯ ========== -->
+  {% endif %}
+</ul>

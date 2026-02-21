@@ -1,0 +1,32 @@
+{% extends 'layout/base.html' %}
+{% load static %}
+
+{% block title %}
+  Доступ запрещен!
+{% endblock %}
+
+{% block content %}
+  <!-- ========== КОНТЕНТ СТРАНИЦЫ ОШИБКИ ДОСТУПА ========== -->
+  <div class="container bg-danger-subtle rounded shadow-sm w-auto my-auto p-3 p-lg-4">
+    <!-- Заголовок ошибки -->
+    <h2 class="text-center text-primary">Доступ запрещен!</h2>
+
+    <!-- Основное содержимое -->
+    <div class="text-center mt-5">
+      <!-- Изображение для визуализации ошибки -->
+      <div class="mt-5">
+        <img class="img-fluid w-50" src="{% static 'img/elements/logo.webp' %}" alt="Доступ запрещен" />
+      </div>
+
+      <!-- Сообщение об ошибке -->
+      <div class="mt-5">
+        <h2 class="text-center text-primary fw-bold big-text">У&nbsp;вас нет прав на&nbsp;просмотр данной страницы.</h2>
+      </div>
+
+      <!-- Кнопка связи с администрацией -->
+      <p class="text-end mt-5 mb-0">
+        <a class="btn btn-outline-primary" href="mailto:info@stratman.pro?subject=Проблема%20с%20доступом&body=Добрый%20день!">Обратитесь к&nbsp;администрации</a>
+      </p>
+    </div>
+  </div>
+{% endblock %}

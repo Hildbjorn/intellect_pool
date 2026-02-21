@@ -1,0 +1,30 @@
+{% load static %}
+<!-- ========== ССЫЛКА "КОНТАКТЫ" ========== -->
+<!--
+  Пункт главного меню навигации
+  Ведет на раздел контактов на главной странице
+-->
+
+{% comment %} <li class="nav-item">
+  <a class="nav-link btn btn-sm btn-link text-nowrap {% if request.path == '/contacts' %}active{% endif %}"
+      {% if request.path == '/contacts' %}
+          aria-current="page"
+      {% else %}
+          aria-current="false"
+      {% endif %}
+      href="{% url 'index' %}#contacts">
+      <i class="bi bi-chat-right-dots me-2"></i>Контакты
+  </a>
+</li> {% endcomment %}
+
+<li class="nav-item">
+  <a class="nav-link btn btn-sm btn-link text-nowrap {% if request.path == '/contacts' %}active{% endif %}"
+      {% if request.path == '/contacts' %}
+          aria-current="page"
+      {% else %}
+          aria-current="false"
+      {% endif %}
+      href="{% url 'index' %}#">
+      <i class="bi bi-chat-right-dots me-2"></i>Контакты
+  </a>
+</li>

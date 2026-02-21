@@ -1,0 +1,21 @@
+{% load static %}
+<!-- ========== ССЫЛКА "ПРОЕКТЫ" ========== -->
+<!--
+  Пункт главного меню навигации
+  Доступен только авторизованным пользователям
+  Ведет на страницу проектов пользователя
+-->
+
+{% if request.user.is_authenticated %}
+  <li class="nav-item">
+    <a class="nav-link btn btn-sm btn-success text-nowrap {% if request.path == '/projects' %}active{% endif %}"
+      {% if request.path == '/projects' %}
+        aria-current="page"
+      {% else %}
+        aria-current="false"
+      {% endif %}
+      href="{% url 'profile' tab='projects' %}">
+      <i class="bi bi-clipboard-data me-2"></i>Проекты
+    </a>
+  </li>
+{% endif %}

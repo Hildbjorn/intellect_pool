@@ -1,0 +1,33 @@
+{% load static %}
+<div class="col-lg-2 col-md-3 col-sm-6">
+  <h5 class="mb-3">Навигация</h5>
+  <ul class="list-unstyled text-dark">
+    {% comment %} <li class="mb-2 d-block text-start">
+      <a class="text-nowrap text-decoration-none" href="{% url 'index' %}#"><i class="bi bi-receipt me-2"></i>Тарифы</a>
+    </li> {% endcomment %}
+    {% comment %} <li class="mb-2 d-block text-start">
+      <a class="text-nowrap text-decoration-none" href="{% url 'index' %}#"><i class="bi bi-newspaper me-2"></i>Новости</a>
+    </li> {% endcomment %}
+    <li class="mb-2 d-block text-start">
+      <a class="text-nowrap text-decoration-none" href="{% url 'index' %}#about"><i class="bi bi-info-circle me-2"></i>О&nbsp;сервисе</a>
+    </li>
+    <li class="mb-2 d-block text-start">
+      <a class="text-nowrap text-decoration-none" href="#"><i class="bi bi-lightbulb me-2"></i>РИД</a>
+    </li>
+    {% if request.user.is_authenticated %}
+      <li class="mb-2 d-block text-start">
+        <a class="text-nowrap text-decoration-none" href="{% url 'profile' tab='profile' %}"><i class="bi bi-person-workspace me-2"></i>Личный кабинет</a>
+      </li>
+      <li class="mb-2 d-block text-start">
+        <a class="text-nowrap text-decoration-none" href="{% url 'profile' tab='projects' %}"><i class="bi bi-clipboard-data me-2"></i>Проекты</a>
+      </li>
+    {% else %}
+      <li class="mb-2 d-block text-start">
+        <a type="button" class="text-nowrap text-decoration-none" role="button" hx-get="{% url 'profile_login_modal' %}?next={% url 'profile' tab='profile' %}" hx-target="#modal-content" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#modal"><i class="bi bi-person-workspace me-2"></i>Личный кабинет</a>
+      </li>
+      <li class="mb-2 d-block text-start">
+        <a type="button" class="text-nowrap text-decoration-none" role="button" hx-get="{% url 'profile_login_modal' %}?next={% url 'profile' tab='projects' %}" hx-target="#modal-content" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#modal"><i class="bi bi-clipboard-data me-2"></i>Проекты</a>
+      </li>
+    {% endif %}
+  </ul>
+</div>

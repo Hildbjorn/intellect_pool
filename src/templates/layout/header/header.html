@@ -1,0 +1,52 @@
+<!-- ==================== ШАПКА САЙТА ==================== -->
+<!--                       
+  Основной header сайта с навигацией:
+  - Адаптивное меню (коллапсируется в offcanvas на мобильных)
+  - Содержит логотип, основное меню и меню пользователя
+  - Фиксированная позиция вверху страницы
+                      -->
+{% load static %}
+{% load widget_tweaks %}
+
+<header id="header" class="d-flex align-items-center justify-content-between fixed-top">
+  <!-- ========== ОСНОВНАЯ НАВИГАЦИЯ ========== -->
+  <nav class="navbar navbar-expand-xl bg-primary fixed-top">
+    <div class="container">
+      <!-- Логотип и название сайта -->
+      {% include 'layout/header/navbar_brand.html' %}
+
+      <!-- Кнопка открытия мобильного меню (offcanvas) -->
+      <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasNavbar" aria-controls="offcanvasNavbar" aria-label="Переключить навигацию"><i class="bi bi-list fs-2 text-light"></i></button>
+
+      <!-- ========== OFF-CANVAS МЕНЮ (для мобильных) ========== -->
+      <div class="offcanvas offcanvas-end bg-primary" tabindex="-1" id="offcanvasNavbar" aria-labelledby="offcanvasNavbarLabel">
+        <!-- Шапка offcanvas меню -->
+        <div class="offcanvas-header">
+          <h5 class="offcanvas-title" id="offcanvasNavbarLabel">{% include 'layout/header/navbar_brand.html' %}</h5>
+          <!-- Кнопка закрытия меню -->
+          <button type="button" class="btn-close fs-2" data-bs-dismiss="offcanvas" aria-label="Закрыть"><i class="bi bi-x"></i></button>
+        </div>
+
+        <!-- Тело offcanvas меню -->
+        <div class="offcanvas-body">
+          <!-- ========== ГЛАВНОЕ МЕНЮ ========== -->
+          <ul class="navbar-nav text-light justify-content-center align-items-start align-items-xl-center flex-grow-1 pe-5 gap-2 gap-xl-4 mb-2 mb-xl-0">
+            <!-- Основные пункты меню (подключаются как отдельные компоненты) -->
+            {% comment %} {% include 'layout/header/main_menu/home_link.html' %} <!-- Ссылка на главную --> {% endcomment %}
+            {% comment %} {% include 'layout/header/main_menu/about_link.html' %} <!-- О сервисе --> {% endcomment %}
+            {% comment %} {% include 'layout/header/main_menu/handbook_dropdown_menu.html' %} <!-- Выпадающее меню справочника --> {% endcomment %}
+          </ul>
+          <!-- ========== КОНЕЦ ГЛАВНОГО МЕНЮ ========== -->
+
+          <!-- Меню пользователя (логин/регистрация или профиль) -->
+          {% include 'layout/header/user_menu.html' %}
+        </div>
+      </div>
+      <!-- ========== КОНЕЦ OFF-CANVAS МЕНЮ ========== -->
+    </div>
+  </nav>
+  <!-- ========== КОНЕЦ ОСНОВНОЙ НАВИГАЦИИ ========== -->
+</header>
+
+<!-- Заглушка для компенсации фиксированного header'а (чтобы контент не скрывался) -->
+<div id="header_plug" class="header_plug bg-primary"></div>

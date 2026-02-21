@@ -1,0 +1,42 @@
+{% load static %}
+{% load widget_tweaks %}
+
+<form action="{{ action }}" id="login_form" method="POST" enctype="multipart/form-data" class="form">
+  {% csrf_token %}
+
+  <!-- Сообщения об ошибках -->
+  <div class="my-3">
+    <p class="text-danger">
+      {% if form.errors %}
+        Ваше имя пользователя и&nbsp;пароль не&nbsp;совпадают. Попробуйте&nbsp;еще&nbsp;раз.
+      {% endif %}
+      {% if next %}
+        {% if user.is_authenticated %}
+          У&nbsp;вашей учетной записи нет&nbsp;доступа к&nbsp;этой странице.
+          <br />Чтобы продолжить, пожалуйста, войдите в&nbsp;систему с&nbsp;учетной записью, у&nbsp;которой есть доступ.
+        {% endif %}
+      {% endif %}
+    </p>
+  </div>
+
+  <!-- Поля формы -->
+  <div class="my-3">
+    <!-- Поле логина -->
+    <div class="form-floating my-3">
+      {{ form.username|add_class:'form-control floating'|attr:'id:id_username'|attr:'placeholder:name@example.com' }}
+      <label for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+    </div>
+
+    <!-- Поле пароля -->
+    <div class="form-floating my-3">
+      {{ form.password|add_class:'form-control floating'|attr:'id:id_password'|attr:'placeholder:Пароль' }}
+      <label for="{{ form.password.id_for_label }}">{{ form.password.label_tag }}</label>
+      <div id="{{ form.password.id_for_label }}Help" class="form-text">{{ form.password.errors }}</div>
+    </div>
+  </div>
+
+  <!-- Кнопка отправки -->
+  <div class="d-flex row justify-content-end px-3 gap-2">
+    <button type="submit" class="btn btn-lg btn_submit btn-primary my-3"><i class="bi bi-box-arrow-in-right pe-2"></i>Войти</button>
+  </div>
+</form>

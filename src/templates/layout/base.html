@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<!--             
+  Базовый шаблон проекта "IdeaHub"
+  Автор: Artem Fomin (2024)
+  Используемые технологии:
+  - Django
+  - Bootstrap 5
+  - HTMX
+  - jQuery
+  - Sass
+            -->
+{% load static %}
+{% load sass_tags %}
+{% load django_bootstrap5 %}
+
+<html lang="ru" data-bs-theme="light">
+  <head>
+    <!-- ==================== БАЗОВЫЕ НАСТРОЙКИ ==================== -->
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- ==================== ЗАЩИТА И БЕЗОПАСНОСТЬ ==================== -->
+    <meta name="csrfmiddlewaretoken" content="{{ csrf_token }}" />
+
+    <!-- ==================== СТИЛИ ==================== -->
+    <!-- Основные стили проекта (компилируются из Sass) -->
+    <link href="{% sass_src 'css/main.scss' %}" rel="stylesheet" type="text/css" />
+
+    <!-- ==================== СКРИПТЫ ==================== -->
+    <!-- HTMX - библиотека для AJAX-запросов и динамического обновления контента -->
+    <script src="{% static 'htmx/htmx.min.js' %}"></script>
+
+    <!-- Bootstrap JavaScript (включает Popper.js для всплывающих элементов) -->
+    {% bootstrap_javascript %}
+
+    <!-- jQuery (основная зависимость для многих плагинов) -->
+    <script src="{% static 'js/jquery-3.7.1.min.js' %}"></script>
+
+    <!-- Основные скрипты проекта (кастомная логика) -->
+    <script type="text/javascript" src="{% static 'js/script.js' %}"></script>
+
+    <!-- Интеграция с DaData для автодополнения организаций -->
+    <script src="{% static 'dadata/suggestions/js/jquery.suggestions.min.js' %}"></script>
+
+    <!-- ==================== ЗАГОЛОВОК И ФАВИКОНКИ ==================== -->
+    <title>
+      {% block title %}
+        IdeaHub
+      {% endblock %}
+    </title>
+
+    <!-- Фавиконки для всех устройств и браузеров -->
+    {% include 'layout/components/favicons.html' %}
+
+    <!-- ==================== ДОПОЛНИТЕЛЬНЫЕ МЕТА-ТЕГИ ==================== -->
+    {% block meta_tags %}
+
+    {% endblock %}
+  </head>
+
+  <!-- ==================== ТЕЛО СТРАНИЦЫ ==================== -->
+  <body class="bg-body">
+    <!-- Индикатор загрузки (отображается при AJAX-запросах) -->
+    {% include 'layout/components/spinner.html' %}
+
+    <!-- Контейнер для всех модальных окон -->
+    {% include 'layout/components/modal.html' %}
+
+    <!-- Шапка сайта (навигация, логотип и т.д.) -->
+    {% if request.user.is_authenticated %}
+      {% include 'layout/header/header.html' %}
+    {% endif %}
+
+    <!-- ==================== ОСНОВНОЙ КОНТЕНТ ==================== -->
+    <main id="main-content" class="d-flex flex-column flex-fill bg-body">
+      <!-- Системные сообщения (успех, ошибки, предупреждения) -->
+      {% include 'layout/components/messages.html' %}
+
+      <!--             
+        БЛОК КОНТЕНТА 
+        Основное содержимое страницы (переопределяется в дочерних шаблонах)
+                  -->
+      {% block content %}
+
+      {% endblock %}
+    </main>
+    <!-- Кнопка "Наверх" -->
+    {% include 'layout/components/scroll_to_top.html' %}
+    <!-- Подвал сайта (контактная информация, ссылки и т.д.) -->
+    {% comment %} {% include 'layout/footer/footer.html' %} {% endcomment %}
+  </body>
+</html>

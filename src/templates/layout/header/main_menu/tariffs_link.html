@@ -1,0 +1,18 @@
+{% load static %}
+<!-- ========== ССЫЛКА "ТАРИФЫ" ========== -->
+<!--
+  Пункт главного меню навигации
+  Ведет на раздел тарифов на главной странице
+-->
+
+{% comment %} <li class="nav-item">
+  <a class="nav-link btn btn-sm btn-link text-nowrap {% if request.path == '/tariffs' %}active{% endif %}"
+      {% if request.path == '/tariffs' %}
+          aria-current="page"
+      {% else %}
+          aria-current="false"
+      {% endif %}
+      href="{% url 'index' %}#tariffs">
+      <i class="bi bi-receipt me-2"></i>Тарифы
+  </a>
+</li> {% endcomment %}

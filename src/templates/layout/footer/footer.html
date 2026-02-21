@@ -1,0 +1,21 @@
+{% load static %}
+<!-- ========== ПОДВАЛ САЙТА ========== -->
+<footer class="footer bg-body-tertiary text-primary pt-5 pb-4">
+  <div class="container">
+    <div class="row g-4 px-3 px-md-0">
+      <!-- Быстрые ссылки -->
+      <!-- О компании -->
+      {% include 'layout/footer/footer_about.html' %}
+      <!-- Навигация -->
+      {% include 'layout/footer/footer_navigation.html' %}
+
+      <!-- Ресурсы -->
+      {% include 'layout/footer/footer_resources.html' %}
+      <!-- Подписка -->
+      {% include 'layout/footer/footer_news_subscribe.html' %}
+    </div>
+
+    <!-- Копирайт -->
+    {% include 'layout/footer/footer_copyright.html' %}
+  </div>
+</footer>
