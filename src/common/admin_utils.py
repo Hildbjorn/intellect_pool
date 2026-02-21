@@ -3,6 +3,7 @@
 """
 
 from django.templatetags.static import static
+from django.utils import timezone
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from markdown import markdown
@@ -222,3 +223,41 @@ class AdminDisplayMixin:
             display_list.insert(1, 'display_content_preview')
         
         return tuple(display_list)
+    
+    def created_at_display(self, obj):
+        """Форматированное отображение даты создания"""
+        if obj.created_at:
+            local_time = timezone.localtime(obj.created_at)
+            return format_html(
+                '<span title="{}">{}</span><br><small style="color: #999;">{}</small>',
+                obj.created_at.isoformat(),
+                local_time.strftime('%d.%m.%Y'),
+                local_time.strftime('%H:%M')
+            )
+        return '-'
+    created_at_display.short_description = 'Создано'
+    created_at_display.admin_order_field = 'created_at'
+
+    def updated_at_display(self, obj):
+        """Форматированное отображение даты обновления"""
+        if obj.updated_at:
+            local_time = timezone.localtime(obj.updated_at)
+            return format_html(
+                '<span title="{}">{}</span><br><small style="color: #999;">{}</small>',
+                obj.updated_at.isoformat(),
+                local_time.strftime('%d.%m.%Y'),
+                local_time.strftime('%H:%M')
+            )
+        return '-'
+    updated_at_display.short_description = 'Обновлено'
+    updated_at_display.admin_order_field = 'updated_at'
+
+    def boolean_icon_display(self, value):
+        """Отображение булевых значений с иконками"""
+        if value:
+            return format_html(
+                '<span style="color: #28a745; font-weight: bold;">✓</span>'
+            )
+        return format_html(
+            '<span style="color: #dc3545;">✗</span>'
+        )

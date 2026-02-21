@@ -66,7 +66,7 @@ THIRD_PARTY_APPS = [
 # Кастомные приложения проекта
 LOCAL_APPS = [
     'common',
-    # 'core',
+    'core',
     'users',
     'home',
 ]
