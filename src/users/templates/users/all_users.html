@@ -23,13 +23,17 @@
             {% if user.is_active == False %}
                 
                 
+                
             bg-danger-subtle
+
 
 
               {% else %}
                 
                 
+                
             border border-1 border-secondary
+
 
 
               {% endif %} 
@@ -44,7 +48,7 @@
               <div class="user_card_footer">
                 <div class="d-flex flex-row justify-content-around align-items-center px-3 pb-3">
                   {% if user.email %}
-                    <a href="mailto:{{ user.email }}?subject=Запрос от сервиса &laquo;IdeaHub&raquo;&amp;body=Добрый%20день!" class="btn btn-outline-primary rounded-circle" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="{{ user.email }}"><i class="bi bi-envelope-at fs-6"></i></a>
+                    <a href="mailto:{{ user.email }}?subject=Запрос от сервиса &laquo;IntellectPool&raquo;&amp;body=Добрый%20день!" class="btn btn-outline-primary rounded-circle" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="{{ user.email }}"><i class="bi bi-envelope-at fs-6"></i></a>
                   {% else %}
                     <div class="btn btn-outline-primary rounded-circle" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="&mdash;&mdash;&mdash;">
                       <i class="bi bi-envelope-at fs-6"></i>

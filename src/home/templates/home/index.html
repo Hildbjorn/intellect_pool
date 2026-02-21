@@ -1,0 +1,21 @@
+{% extends 'layout/base.html' %}
+{% load static %}
+{% load widget_tweaks %}
+
+{% block title %}
+  IntellectPool - Центр идей, созданных на базе РИД
+{% endblock %}
+
+<!-- META TAGS -->
+{% block meta_tags %}
+  {% include 'layout/components/meta_tags.html' %}
+{% endblock %}
+
+{% block content %}
+  {% if request.user.is_authenticated %}
+    {% include 'home/components/main.html' %}
+  {% else %}
+    <!-- Hero -->
+    {% include 'home/components/hero.html' %}
+  {% endif %}
+{% endblock %}

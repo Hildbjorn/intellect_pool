@@ -14,7 +14,7 @@ urlpatterns = [
     # маршрут к пользователям
     path('users/', include('users.urls')),
     # маршрут к главной странице
-    # path('', include('home.urls')),
+    path('', include('home.urls')),
 ]
 
 # добавление маршрута к медиафайлам в режиме отладки
@@ -31,4 +31,4 @@ urlpatterns += [
 ]
 
 # обработчик ошибки 404
-# handler404 = "idea_hub.views.page_not_found_view"
+# handler404 = "intellect_pool.views.page_not_found_view"

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
-<!--             
-  Базовый шаблон проекта "IdeaHub"
+<!--              
+  Базовый шаблон проекта "IntellectPool"
   Автор: Artem Fomin (2024)
   Используемые технологии:
   - Django
@@ -8,7 +8,7 @@
   - HTMX
   - jQuery
   - Sass
-            -->
+             -->
 {% load static %}
 {% load sass_tags %}
 {% load django_bootstrap5 %}
@@ -45,7 +45,7 @@
     <!-- ==================== ЗАГОЛОВОК И ФАВИКОНКИ ==================== -->
     <title>
       {% block title %}
-        IdeaHub
+        IntellectPool
       {% endblock %}
     </title>
 
@@ -76,10 +76,10 @@
       <!-- Системные сообщения (успех, ошибки, предупреждения) -->
       {% include 'layout/components/messages.html' %}
 
-      <!--             
+      <!--              
         БЛОК КОНТЕНТА 
         Основное содержимое страницы (переопределяется в дочерних шаблонах)
-                  -->
+                   -->
       {% block content %}
 
       {% endblock %}

@@ -1,0 +1,98 @@
+{% load static %}
+
+<!-- ======= Hero Section ======= -->
+<section id="hero">
+  <div class="hero__body">
+    <div class="container p-0">
+      <div class="row align-items-center g-4 g-lg-6">
+        <!-- Текстовый блок -->
+        <div class="col-12 col-xl-6 order-1 order-xl-1">
+          <div class="mb-4">
+            <span class="badge bg-light bg-opacity-10 text-light border border-primary border-opacity-25 fs-6 px-4 py-2 rounded-pill"><i class="bi bi-lightbulb me-2"></i>Платформа инновационных проектов</span>
+          </div>
+
+          <h1 class="display-4 fw-bold mb-4">
+            IntellectPool
+            <span class="text-light d-block fs-2 fw-normal mt-2">Центр идей на&nbsp;базе РИД</span>
+          </h1>
+
+          <p class="lead text-light mb-5">Структурированный и&nbsp;визуально привлекательный способ демонстрации технологических решений и&nbsp;их&nbsp;коммерческого потенциала.</p>
+
+          <!-- Ключевые преимущества в списке -->
+          <div class="row mb-5">
+            <div class="col-md-6 mb-3">
+              <div class="d-flex">
+                <div class="text-success me-3">
+                  <i class="bi bi-check2-circle fs-4"></i>
+                </div>
+                <div>
+                  <h6 class="text-warning fw-bold mb-1">Защищённые технологии</h6>
+                  <p class="small text-light mb-0">Проекты на&nbsp;основе патентованных решений</p>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6 mb-3">
+              <div class="d-flex">
+                <div class="text-success me-3">
+                  <i class="bi bi-check2-circle fs-4"></i>
+                </div>
+                <div>
+                  <h6 class="text-warning fw-bold mb-1">Коммерческий анализ</h6>
+                  <p class="small text-light mb-0">Структурированные метрики и&nbsp;показатели</p>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6 mb-3">
+              <div class="d-flex">
+                <div class="text-success me-3">
+                  <i class="bi bi-check2-circle fs-4"></i>
+                </div>
+                <div>
+                  <h6 class="text-warning fw-bold mb-1">Визуальная презентация</h6>
+                  <p class="small text-light mb-0">Привлекательный формат демонстрации</p>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6 mb-3">
+              <div class="d-flex">
+                <div class="text-success me-3">
+                  <i class="bi bi-check2-circle fs-4"></i>
+                </div>
+                <div>
+                  <h6 class="text-warning fw-bold mb-1">Целевая аудитория</h6>
+                  <p class="small text-light mb-0">Для стратегических партнёров и&nbsp;инвесторов</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Кнопки действий -->
+          <div class="d-flex flex-row justify-content-center justify-content-lg-start gap-3 mb-4">
+            <!-- Кнопка входа -->
+            <div type="button" class="btn btn-lg btn-success px-5 shadow-sm" role="button" hx-get="{% url 'profile_login_modal' %}?next={% url 'index' %}" hx-target="#modal-content" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#modal">
+              <i class="bi bi-box-arrow-in-right fs-5 me-2"></i>Вход в&nbsp;систему
+            </div>
+          </div>
+        </div>
+
+        <!-- Визуальный блок -->
+        <div class="col-12 col-xl-6 order-2 order-xl-2">
+          <div class="position-relative">
+            <!-- Логотип -->
+            <div class="text-center">
+              <img class="img-fluid" src="{% static 'img/elements/logo.webp' %}" alt="IntellectPool - Центр инновационных проектов" style="max-height: 400px;" />
+            </div>
+            <div class="text-center">
+              {% include 'home/components/statistics.html' %}
+            </div>
+
+            <!-- Декоративные элементы -->
+            <div class="position-absolute top-0 start-0 translate-middle bg-warning bg-opacity-10 rounded-circle" style="width: 100px; height: 100px;"></div>
+            <div class="position-absolute bottom-0 end-0 translate-middle bg-light bg-opacity-10 rounded-circle" style="width: 80px; height: 80px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- ===== End of Hero Section ===== -->
