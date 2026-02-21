@@ -1,0 +1,61 @@
+{% load static %}
+{% load widget_tweaks %}
+{% load common_tags %}
+
+<form id="login_form" method="POST" enctype="multipart/form-data" class="form" hx-post="{% url 'profile_login_modal' %}" hx-swap="innerHTML" hx-indicator="#spinner_modal">
+  {% csrf_token %}
+  <!-- Поле для сохранения -->
+  <input type="hidden" name="next" value="{{ request.GET.next }}" />
+  <div class="modal-header rounded-top ps-xl-4">
+    <h3 class="modal-title align-middle" id="staticBackdropLabel"><i class="bi bi-key me-3"></i>Вход</h3>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+  </div>
+  <div class="modal-body ps-xl-4">
+    <div class="row my-0 my-lg-3">
+      <div class="col-12 col-lg-4 order-1 d-none d-lg-flex px-3">
+        <div class="d-flex align-items-center justify-content-start flex-grow-1">
+          <img src="{% static 'img/elements/logo.webp' %}" class="img-fluid rounded-3" alt="Регистрация" />
+        </div>
+      </div>
+      <div class="col-12 col-lg-8 order-2 d-flex flex-column justify-content-center mt-3 mt-lg-0 px-3">
+        <div class="justify-content-start">
+          <!-- Форма -->
+          <div class="my-3">
+            <p class="text-danger">
+              {% if form.errors %}
+                Ваше имя пользователя и&nbsp;пароль не&nbsp;совпадают. Попробуйте&nbsp;еще&nbsp;раз.
+              {% endif %}
+              {% if next %}
+                {% if user.is_authenticated %}
+                  У&nbsp;вашей учетной записи нет&nbsp;доступа к&nbsp;этой странице.
+                  <br />Чтобы продолжить, пожалуйста, войдите в&nbsp;систему с&nbsp;учетной записью, у&nbsp;которой есть доступ.
+                {% endif %}
+              {% endif %}
+            </p>
+          </div>
+
+          <div class="my-3">
+            <div class="form-floating my-3">
+              {{ form.username|add_class:'form-control floating'|attr:'id:id_username'|attr:'placeholder:name@example.com' }}
+              <label for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+            </div>
+            <div class="form-floating my-3">
+              {{ form.password|add_class:'form-control floating'|attr:'id:id_password'|attr:'placeholder:Пароль' }}
+              <label for="{{ form.password.id_for_label }}">{{ form.password.label_tag }}</label>
+              <div id="{{ form.password.id_for_label }}Help" class="form-text">{{ form.password.errors }}</div>
+            </div>
+          </div>
+          <!-- ===== -->
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="modal-footer rounded-bottom ps-xl-4">
+    <div class="d-flex row justify-content-end px-3 gap-2">
+      <button type="submit" class="btn btn-lg btn_submit btn-primary my-3"><i class="bi bi-box-arrow-in-right pe-2"></i>Войти</button>
+    </div>
+  </div>
+</form>
+
+<!-- Индикатор загрузки в модальном окне -->
+{% include 'layout/components/spinner_modal.html' %}

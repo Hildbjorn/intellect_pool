@@ -1,0 +1,7 @@
+{% load static %}
+
+{% if user.image %}
+  <img src="{{ user.image.url }}" alt="{{ user }}" class="{{ custom_class }}" />
+{% else %}
+  <img src="{% static 'img/elements/no_photo.webp' %}" alt="{{ user }}" class="{{ custom_class }}" />
+{% endif %}

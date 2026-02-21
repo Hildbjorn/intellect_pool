@@ -1,22 +1,34 @@
 """
-URL configuration for intellect_pool project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
+Настройки маршрутов проекта Intellect Pool
+Copyright (c) 2026 Artem Fomin
 """
+from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import path
+from django.urls import include, path
+
+from django.conf import settings
 
 urlpatterns = [
+    # маршрут к админке Django
     path('admin/', admin.site.urls),
+    # маршрут к пользователям
+    path('users/', include('users.urls')),
+    # маршрут к главной странице
+    # path('', include('home.urls')),
 ]
+
+# добавление маршрута к медиафайлам в режиме отладки
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    
+# добавление маршрута к медиафайлам
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# urls аутентификации сайта Django (для входа, выхода, управления паролями)
+urlpatterns += [
+    path('accounts/', include('django.contrib.auth.urls')),
+]
+
+# обработчик ошибки 404
+# handler404 = "idea_hub.views.page_not_found_view"

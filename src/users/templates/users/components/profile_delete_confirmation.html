@@ -1,0 +1,50 @@
+{% load static %}
+{% load common_tags %}
+
+<div class="modal-header bg-danger-subtle rounded-top ps-xl-4">
+  <h3 class="modal-title align-middle text-danger" id="staticBackdropLabel"><i class="bi bi-trash me-3"></i>Удаление профиля</h3>
+  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+</div>
+<div class="modal-body bg-danger-subtle ps-xl-4">
+  <div class="row my-0 my-lg-3">
+    <div class="col-12 col-lg-4 order-1 d-none d-lg-flex px-3">
+      <div class="d-flex align-items-center justify-content-start flex-grow-1">
+        {% if profile.image %}
+          <img src="{{ profile.image.url }}" class="img-fluid rounded-3" alt="{{ profile|safe }}" />
+        {% else %}
+          <img src="{% static 'img/elements/no_photo.webp' %}" class="img-fluid bg-light rounded-3" alt="{{ profile|safe }}" />
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-12 col-lg-8 order-2 d-flex flex-column justify-content-center mt-3 mt-lg-0 px-3">
+      <div class="justify-content-start">
+        <!-- Предупреждение -->
+        <div class="mb-2">
+          <h3 class="text-danger mb-3">Внимание!</h3>
+          <p>
+            Вы&nbsp;собираетесь удалить свой профиль <br /><span class="text-primary fw-bold">{{ profile|replace_n|safe|typus }}</span>.
+          </p>
+          <p>Это действие необратимо и&nbsp;приведет к&nbsp;следующему:</p>
+          <ul>
+            <li>Все ваши данные будут безвозвратно удалены.</li>
+            <li>Вы&nbsp;потеряете доступ ко&nbsp;всем проектам и&nbsp;функциям.</li>
+          </ul>
+          <p>
+            Если вы&nbsp;уверены, нажмите &laquo;Удалить&raquo;.<br />Если хотите отменить, просто закройте это окно.
+          </p>
+        </div>
+        <!-- ============= -->
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-footer bg-danger-subtle rounded-bottom ps-xl-4">
+  <button type="button" class="btn_submit btn btn-outline-primary me-2" data-bs-dismiss="modal">Закрыть</button>
+  <form action="{% url 'profile_delete' %}" method="post" hx-indicator="#spinner_modal">
+    {% csrf_token %}
+    <button type="submit" class="btn btn_submit btn-danger"><i class="bi bi-trash me-2"></i>Удалить</button>
+  </form>
+</div>
+
+<!-- Индикатор загрузки в модальном окне -->
+{% include 'layout/components/spinner_modal.html' %}

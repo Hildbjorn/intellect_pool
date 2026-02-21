@@ -1,0 +1,26 @@
+{% extends 'layout/base.html' %}
+{% load static %}
+{% load django_bootstrap5 %}
+
+{% block title %}
+  Удаление профиля пользователя
+{% endblock %}
+
+{% block content %}
+  <!-- Контент страницы -->
+  <div class="container bg-body-tertiary rounded shadow-sm w-auto my-auto p-3 p-lg-4">
+    <h2>Удаление профиля пользователя</h2>
+    <div class="my-5">
+      <h3>Внимание!</h3>
+      <p>Вы хотите удалить пользователя {{ user }}.</p>
+    </div>
+    <div class="d-flex row justify-content-end align-content-end text-end">
+      <form method="post">
+        {% csrf_token %}
+        <a href="{% url 'profile' %}" class="btn btn-secondary me-2"><i class="bi bi-arrow-left me-2"></i>Отмена</a>
+        {% bootstrap_button '<i class="bi bi-trash me-2"></i>Удалить' button_class='btn-danger' %}
+      </form>
+    </div>
+  </div>
+  <!-- *********** -->
+{% endblock %}

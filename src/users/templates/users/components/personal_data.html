@@ -1,0 +1,112 @@
+{% load static %}
+{% load common_tags %}
+
+<div class="tab-pane fade {% if active_tab == 'profile' %}show active{% endif %} my-3" id="nav-profile" role="tabpanel" aria-labelledby="nav-profile-tab">
+  <div class="bg-body-tertiary p-3 p-md-4">
+    <form action="{{ action }}" id="profile_form" method="POST" enctype="multipart/form-data" class="form">
+      {% csrf_token %}
+
+      <!-- Заголовок раздела -->
+      <div class="mb-4">
+        <h4 class="fw-bold text-primary mb-1">Профиль пользователя</h4>
+        <p class="text-muted">Управление личной информацией и контактными данными</p>
+      </div>
+
+      <div class="profile_container">
+        <!-- Три колонки в одной строке -->
+        <div class="row align-items-stretch g-4 mb-4">
+          <!-- Колонка 1: Аватар -->
+          <div class="col-lg-3 d-flex">
+            <div class="card border-0 shadow-sm w-100 d-flex flex-column align-items-center w-100 p-3">
+              <div id="image_preview" class="image w-100 d-flex flex-column" style="height: 100%;">
+                <label for="image_field" class="form-label d-flex flex-column justify-content-between align-items-center" style="flex-grow: 1;">
+                  {% include 'users/components/avatar.html' with custom_class='img-fluid rounded-circle shadow-sm mb-3' %}
+                  <div class="btn btn-sm btn-outline-primary w-100 mt-auto">
+                    <i class="bi bi-camera pe-2"></i>Изменить фото
+                  </div>
+                </label>
+                {{ form.image }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Колонка 2: ФИО -->
+          <div class="col-md-6 col-lg-5 d-flex">
+            <div class="card border-0 shadow-sm w-100 d-flex flex-column">
+              <div class="card-header bg-light-subtle flex-shrink-0">
+                <h5 class="fw-bold mb-0">Личные данные</h5>
+              </div>
+
+              <div class="card-body d-flex flex-column p-3">
+                <div class="d-flex flex-column justify-content-around h-100">
+                  <!-- Фамилия -->
+                  <div class="form-floating mb-3">
+                    {{ form.last_name }}
+                    <label class="form-label text-muted small mb-1"><i class="bi bi-people me-2 text-primary"></i>{{ form.last_name.label }}</label>
+                  </div>
+
+                  <!-- Имя -->
+                  <div class="form-floating mb-3">
+                    {{ form.first_name }}
+                    <label class="form-label text-muted small mb-1"><i class="bi bi-person me-2 text-primary"></i>{{ form.first_name.label }}</label>
+                  </div>
+
+                  <!-- Отчество -->
+                  <div class="form-floating mb-3">
+                    {{ form.middle_name }}
+                    <label class="form-label text-muted small mb-1"><i class="bi bi-person-up me-2 text-primary"></i>{{ form.middle_name.label }}</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Колонка 3: Контактные данные -->
+          <div class="col-md-6 col-lg-4 d-flex">
+            <div class="card border-0 shadow-sm w-100 d-flex flex-column">
+              <div class="card-header bg-light-subtle flex-shrink-0">
+                <h5 class="fw-bold mb-0">Контактные данные</h5>
+              </div>
+
+              <div class="card-body d-flex flex-column p-3">
+                <div class="d-flex flex-column justify-content-around h-100">
+                  <!-- Псевдоним -->
+                  <div class="form-floating mb-3">
+                    {{ form.nic_name }}
+                    <label class="form-label text-muted small mb-1"><i class="bi bi-at me-2 text-primary"></i>{{ form.nic_name.label }}</label>
+                  </div>
+
+                  <!-- E-mail -->
+                  <div class="form-floating mb-3">
+                    {{ form.email }}
+                    <label class="form-label text-muted small mb-1"><i class="bi bi-envelope-at me-2 text-primary"></i>{{ form.email.label }}</label>
+                    <div class="text-danger">{{ form.email.errors }}</div>
+                  </div>
+
+                  <!-- Телефон -->
+                  <div class="form-floating mb-3">
+                    {{ form.phone }}
+                    <label class="form-label text-muted small mb-1"><i class="bi bi-telephone me-2 text-primary"></i>{{ form.phone.label }}</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Панель действий -->
+      <div class="border-top pt-4 mt-3">
+        <div class="d-flex justify-content-between align-items-end">
+          {% if request.user.is_authenticated and not user.is_superuser %}
+            <button type="button" class="btn btn-outline-danger text-decoration-none fw-bold" hx-post="{% url 'profile_delete_confirmation' %}" hx-target="#modal-content" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#modal"><i class="bi bi-trash me-2"></i>Удалить профиль</button>
+          {% else %}
+            <div></div> <!-- Пустой div для выравнивания -->
+          {% endif %}
+
+          <button type="submit" class="btn btn-primary btn-lg px-5 fw-bold"><i class="bi bi-save me-2"></i>Сохранить изменения</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>

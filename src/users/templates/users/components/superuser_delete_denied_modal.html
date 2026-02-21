@@ -1,0 +1,39 @@
+{% load static %}
+{% load common_tags %}
+
+<div class="modal-header rounded-top ps-xl-4">
+  <h3 class="modal-title align-middle text-danger" id="staticBackdropLabel">Самостоятельное удаление не&nbsp;предусмотрено</h3>
+  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+</div>
+<div class="modal-body ps-xl-4">
+  <div class="row my-0 my-lg-3">
+    <div class="col-12 col-lg-4 order-1 d-none d-lg-flex px-3">
+      <div class="d-flex align-items-center justify-content-start flex-grow-1">
+        {% if profile.image %}
+          <img src="{{ profile.image.url }}" class="img-fluid rounded-3" alt="{{ profile|safe }}" />
+        {% else %}
+          <img src="{% static 'img/elements/no_photo.webp' %}" class="img-fluid bg-light rounded-3" alt="{{ profile|safe }}" />
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-12 col-lg-8 order-2 d-flex flex-column justify-content-center mt-3 mt-lg-0 px-3">
+      <div class="justify-content-start">
+        <!-- Предупреждение -->
+        <div class="mt-5">
+          <h3 class="mb-3">Удаление суперпользователя невозможно</h3>
+          <ul>
+            <li class="mb-2">
+              <span class="text-primary fw-bold">{{ profile|replace_n|safe|typus }}</span> является суперпользователем
+            </li>
+            <li>Самостоятельное удаление суперпользователя невозможно</li>
+          </ul>
+          <p class="fw-bold">Пожалуйста, обратитесь к администратору.</p>
+        </div>
+        <!-- ============= -->
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-footer rounded-bottom ps-xl-4">
+  <button type="button" class="btn_submit btn btn-outline-primary me-2" data-bs-dismiss="modal">Закрыть</button>
+</div>
