@@ -2656,7 +2656,7 @@
       "ceo": 1364,
       "phone": "4-36-00",
       "gisp_catalogue_id": "979",
-      "slug": "ao-almaz"
+      "slug": "ao-almaz-kotovsk"
     }
   },
   {
@@ -2688,7 +2688,7 @@
       "ceo": 174,
       "phone": "252-60-00",
       "gisp_catalogue_id": "1417",
-      "slug": "ao-almaz"
+      "slug": "ao-almaz-rostov"
     }
   },
   {
@@ -13609,7 +13609,7 @@
       "ceo": 31,
       "phone": "4-26-45, 4-26-49, 4-26-50, 4-26-53",
       "gisp_catalogue_id": "1293",
-      "slug": "ao-nauchno-issledovatelskiy-institut-aerouprugikh-sistem"
+      "slug": "ao-nii-aerouprugikh-sistem-1293"
     }
   },
   {
@@ -13638,7 +13638,7 @@
       "ceo": 1001,
       "phone": "4-26-45, 4-26-49, 4-26-50, 4-26-53",
       "gisp_catalogue_id": "112309",
-      "slug": "ao-nauchno-issledovatelskiy-institut-aerouprugikh-sistem"
+      "slug": "ao-nii-aerouprugikh-sistem-112309"
     }
   },
   {
@@ -17794,7 +17794,7 @@
       "ceo": 491,
       "phone": "211-40-00 (приёмн.), 211-40-10",
       "gisp_catalogue_id": "190",
-      "slug": "ao-nauchno-proizvodstvennoe-predpriyatie-salyut"
+      "slug": "ao-npp-salyut-190"
     }
   },
   {
@@ -17824,7 +17824,7 @@
       "ceo": 169,
       "phone": "220-55-28",
       "gisp_catalogue_id": "1345",
-      "slug": "ao-nauchno-proizvodstvennoe-predpriyatie-salyut-27"
+      "slug": "ao-npp-salyut-1345"
     }
   },
   {
@@ -19943,7 +19943,7 @@
       "ceo": 243,
       "phone": "25-38-73, 33-34-12, 33-87-39, 33-81-17, 33-80-89",
       "gisp_catalogue_id": "774",
-      "slug": "ao-orbita"
+      "slug": "ao-orbita-243"
     }
   },
   {
@@ -19972,7 +19972,7 @@
       "ceo": 1024,
       "phone": "263-21-24",
       "gisp_catalogue_id": "9869",
-      "slug": "ao-orbita"
+      "slug": "ao-orbita-1024"
     }
   },
   {
@@ -21516,7 +21516,7 @@
       "ceo": 770,
       "phone": "4-32-38",
       "gisp_catalogue_id": "713",
-      "slug": "ao-radiozavod"
+      "slug": "ao-radiozavod-713"
     }
   },
   {
@@ -21548,7 +21548,7 @@
       "ceo": 1013,
       "phone": "49-48-17",
       "gisp_catalogue_id": "343",
-      "slug": "ao-radiozavod"
+      "slug": "ao-radiozavod-343"
     }
   },
   {
@@ -21990,7 +21990,7 @@
       "ceo": 185,
       "phone": "251-43-66",
       "gisp_catalogue_id": "9989",
-      "slug": "ao-rif"
+      "slug": "ao-rif-185"
     }
   },
   {
@@ -22018,7 +22018,7 @@
       "ceo": 464,
       "phone": "20-24-50, 70-64-98",
       "gisp_catalogue_id": "697",
-      "slug": "ao-rif"
+      "slug": "ao-rif-697"
     }
   },
   {
@@ -27755,7 +27755,7 @@
       "ceo_position": 1,
       "ceo": 462,
       "gisp_catalogue_id": "9031",
-      "slug": "ao-elektroagregat"
+      "slug": "ao-elektroagregat-462"
     }
   },
   {
@@ -27783,7 +27783,7 @@
       "ceo_position": 19,
       "ceo": 1090,
       "gisp_catalogue_id": "8593",
-      "slug": "ao-elektroagregat"
+      "slug": "ao-elektroagregat-1090"
     }
   },
   {
@@ -27846,7 +27846,7 @@
       "ceo": 302,
       "phone": "46-10-51",
       "gisp_catalogue_id": "700",
-      "slug": "ao-elektrosignal"
+      "slug": "ao-elektrosignal-302"
     }
   },
   {
@@ -27875,7 +27875,7 @@
       "ceo": 807,
       "phone": "4-71-82(доб.112), 4-57-48",
       "gisp_catalogue_id": "9884",
-      "slug": "ao-elektrosignal"
+      "slug": "ao-elektrosignal-807"
     }
   },
   {
@@ -39132,7 +39132,7 @@
       "gisp_catalogue_id": "110593",
       "ceo_position": null,
       "ceo": null,
-      "slug": "tosp-ao-btk-grupp-v-sankt-peterburge"
+      "slug": "tosp-ao-btk-grupp-spb-110593"
     }
   },
   {
@@ -39156,7 +39156,7 @@
       "gisp_catalogue_id": "110596",
       "ceo_position": null,
       "ceo": null,
-      "slug": "op-ao-btk-grupp-v-gorode-vladikavkaz"
+      "slug": "tosp-ao-btk-grupp-spb-110596"
     }
   },
   {
@@ -42315,7 +42315,7 @@
       "gisp_catalogue_id": "130027",
       "ceo_position": null,
       "ceo": null,
-      "slug": "sergievo-posadskiy-uchastok-ao-voentelekom"
+      "slug": "sergievo-posadskiy-uchastok-ao-voentelekom-130027"
     }
   },
   {
@@ -42339,7 +42339,7 @@
       "gisp_catalogue_id": "98132",
       "ceo_position": null,
       "ceo": null,
-      "slug": "sergievo-posadskiy-uchastok-ao-voentelekom"
+      "slug": "sergievo-posadskiy-uchastok-ao-voentelekom-98132"
     }
   },
   {
@@ -46532,7 +46532,7 @@
       "gisp_catalogue_id": "130025",
       "ceo_position": null,
       "ceo": null,
-      "slug": "chekhovskiy-uchastok-ao-voentelekom"
+      "slug": "chekhovskiy-uchastok-ao-voentelekom-130025"
     }
   },
   {
@@ -46556,7 +46556,7 @@
       "gisp_catalogue_id": "98140",
       "ceo_position": null,
       "ceo": null,
-      "slug": "chekhovskiy-uchastok-ao-voentelekom"
+      "slug": "chekhovskiy-uchastok-ao-voentelekom-98140"
     }
   },
   {

@@ -219,12 +219,6 @@ class Organization(models.Model):
         help_text='Входит в перечень стратегических предприятий (Распоряжение Правительства РФ)',
         db_index=True
     )
-    strategic_1009 = models.BooleanField(
-        default=False,
-        verbose_name='Распоряжение 1009-р',
-        help_text='Входит в перечень стратегических предприятий согласно Распоряжению Правительства РФ № 1009-р',
-        db_index=True
-    )
     
     # Контактная информация
     email = models.EmailField(

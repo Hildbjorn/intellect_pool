@@ -2,8 +2,8 @@
 python excel_to_org_fixtures.py organizations.xlsx --output fixtures --pretty
 
 # Порядок загрузки фикстур:
-python manage.py loaddata industry.json
-python manage.py loaddata activity_type.json
-python manage.py loaddata ceo_position.json
-python manage.py loaddata person.json
-python manage.py loaddata organization.json
+python manage.py loaddata core/fixtures/industry.json
+python manage.py loaddata core/fixtures/activity_type.json
+python manage.py loaddata core/fixtures/ceo_position.json
+python manage.py loaddata core/fixtures/person.json
+python manage.py loaddata core/fixtures/organization.json
