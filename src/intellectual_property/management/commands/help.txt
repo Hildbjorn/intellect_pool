@@ -1,0 +1,13 @@
+# Режим ONLY-ACTIVE: парсинг только активных записей (actual = True)
+# Режим MIN-YEAR 2020: парсинг только записей 2020 года и позже
+# РЕЖИМ DRY-RUN: изменения НЕ будут сохранены в БД
+
+Для запуска по типам РИД:
+--ip-type invention — изобретения
+--ip-type utility-model — полезные модели
+--ip-type industrial-design — промышленные образцы
+--ip-type integrated-circuit-topology — топологии интегральных микросхем
+--ip-type computer-program — программы для ЭВМ
+--ip-type database — базы данных
+
+python manage.py pars_fips_catalogue --only-active --min-year 2020 --ip-type invention --dry-run
