@@ -146,14 +146,37 @@ class InventionParser(BaseFIPSParser):
         """Обязательные колонки для работы парсера"""
         return ['registration number', 'invention name']
     
+    def normalize_name_case(self, name):
+        """
+        Приводит имя к правильному регистру:
+        ФОМИН АРТЕМ ВЛАДИМИРОВИЧ -> Фомин Артем Владимирович
+        """
+        if not name:
+            return name
+        
+        parts = name.split()
+        normalized_parts = []
+        
+        for part in parts:
+            if part and len(part) > 0:
+                part = part.strip('.')
+                
+                if len(part) == 1:
+                    normalized_parts.append(part.upper() + '.')
+                elif '.' in part:
+                    initials = [p for p in part if p.isalpha()]
+                    normalized_parts.append(''.join([i.upper() + '.' for i in initials]))
+                else:
+                    normalized_parts.append(part[0].upper() + part[1:].lower())
+        
+        return ' '.join(normalized_parts)
+    
     def parse_authors(self, authors_str):
         """Парсинг строки с авторами"""
         if pd.isna(authors_str) or not authors_str:
             return []
         
         authors_str = str(authors_str)
-        
-        # Разделяем по переводу строки или запятой
         authors_list = re.split(r'[\n,]\s*', authors_str)
         
         result = []
@@ -162,13 +185,10 @@ class InventionParser(BaseFIPSParser):
             if not author or author == '""' or author == 'null':
                 continue
             
-            # Убираем кавычки
             author = author.strip('"')
-            
-            # Убираем код страны в скобках
             author = re.sub(r'\s*\([A-Z]{2}\)', '', author)
+            author = self.normalize_name_case(author)
             
-            # Пытаемся разобрать ФИО
             parts = author.split()
             
             if len(parts) >= 2:
@@ -176,21 +196,21 @@ class InventionParser(BaseFIPSParser):
                 first_name = parts[1] if len(parts) > 1 else ''
                 middle_name = parts[2] if len(parts) > 2 else ''
                 
-                # Обрабатываем инициалы
-                first_name = first_name.replace('.', '')
-                middle_name = middle_name.replace('.', '')
+                first_name_clean = first_name.replace('.', '')
+                middle_name_clean = middle_name.replace('.', '')
                 
                 result.append({
                     'last_name': last_name,
-                    'first_name': first_name,
-                    'middle_name': middle_name,
+                    'first_name': first_name_clean,
+                    'middle_name': middle_name_clean,
+                    'full_name': author,
                 })
             else:
-                # Если не удалось разобрать, сохраняем как есть
                 result.append({
                     'last_name': author,
                     'first_name': '',
                     'middle_name': '',
+                    'full_name': author,
                 })
         
         return result
@@ -201,8 +221,6 @@ class InventionParser(BaseFIPSParser):
             return []
         
         holders_str = str(holders_str)
-        
-        # Разделяем организации (обычно разделены переводом строки)
         holders_list = re.split(r'[\n]\s*', holders_str)
         
         result = []
@@ -211,22 +229,18 @@ class InventionParser(BaseFIPSParser):
             if not holder or holder == 'null' or holder == 'None':
                 continue
             
-            # Убираем код страны в скобках
             holder = re.sub(r'\s*\([A-Z]{2}\)', '', holder)
-            
             result.append(holder)
         
         return result
     
     def find_or_create_person(self, person_data):
-        """Поиск или создание физического лица с кэшированием"""
-        # Создаем ключ для кэша
+        """Поиск или создание физического лица"""
         cache_key = f"{person_data['last_name']}|{person_data['first_name']}|{person_data['middle_name']}"
         
         if cache_key in self.person_cache:
             return self.person_cache[cache_key]
         
-        # Пытаемся найти по ФИО
         persons = Person.objects.filter(
             last_name=person_data['last_name'],
             first_name=person_data['first_name']
@@ -240,17 +254,18 @@ class InventionParser(BaseFIPSParser):
             self.person_cache[cache_key] = person
             return person
         
-        # Создаем новое - нужно сгенерировать ceo_id
         try:
-            # Находим максимальный существующий ID и увеличиваем на 1
             max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
             new_id = max_id + 1
             
-            # Собираем полное ФИО
-            full_name_parts = [person_data['last_name'], person_data['first_name']]
-            if person_data['middle_name']:
-                full_name_parts.append(person_data['middle_name'])
-            full_name = ' '.join(full_name_parts)
+            if 'full_name' in person_data:
+                full_name = person_data['full_name']
+            else:
+                full_name_parts = [person_data['last_name'], person_data['first_name']]
+                if person_data['middle_name']:
+                    full_name_parts.append(person_data['middle_name'])
+                full_name = ' '.join(full_name_parts)
+                full_name = self.normalize_name_case(full_name)
             
             person = Person.objects.create(
                 ceo_id=new_id,
@@ -264,9 +279,46 @@ class InventionParser(BaseFIPSParser):
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"  Ошибка создания Person: {e}"))
             return None
+    
+    def find_or_create_person_from_name(self, full_name):
+        """Поиск или создание физического лица по полному имени"""
+        if pd.isna(full_name) or not full_name:
+            return None
         
+        full_name = str(full_name).strip().strip('"')
+        full_name = self.normalize_name_case(full_name)
+        
+        if full_name in self.person_cache:
+            return self.person_cache[full_name]
+        
+        parts = full_name.split()
+        
+        if len(parts) >= 2:
+            last_name = parts[0]
+            first_name = parts[1] if len(parts) > 1 else ''
+            middle_name = parts[2] if len(parts) > 2 else ''
+            
+            first_name_clean = first_name.replace('.', '')
+            middle_name_clean = middle_name.replace('.', '')
+            
+            person_data = {
+                'last_name': last_name,
+                'first_name': first_name_clean,
+                'middle_name': middle_name_clean,
+                'full_name': full_name,
+            }
+        else:
+            person_data = {
+                'last_name': full_name,
+                'first_name': '',
+                'middle_name': '',
+                'full_name': full_name,
+            }
+        
+        return self.find_or_create_person(person_data)
+    
     def find_or_create_organization(self, org_name):
-        """Поиск или создание организации с кэшированием"""
+        """Поиск или создание организации"""
         if pd.isna(org_name) or not org_name:
             return None
         
@@ -276,32 +328,49 @@ class InventionParser(BaseFIPSParser):
         if not org_name or org_name == 'null' or org_name == 'None':
             return None
         
-        # Проверяем, не является ли это физическим лицом
-        # Паттерны для определения физлиц
-        person_patterns = [
-            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+$',  # Иванов Иван Иванович
-            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\.$',  # Иванов И.И.
-            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+$',  # Иванов Иван
-        ]
+        self.stdout.write(f"           Создание организации: {org_name[:100]}...")
         
-        for pattern in person_patterns:
-            if re.match(pattern, org_name):
-                self.stdout.write(f"     ⚠️ Пропуск организации (похоже на физлицо): {org_name[:50]}...")
-                return None
-        
-        # Проверяем кэш
         if org_name in self.organization_cache:
             org = self.organization_cache[org_name]
             if isinstance(org, Organization):
                 return org
             return None
         
-        # Генерируем slug из названия
+        # Проверяем, не является ли это физическим лицом
+        person_patterns = [
+            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+$',
+            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\.$',
+            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+$',
+            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.$',
+        ]
+        
+        for pattern in person_patterns:
+            if re.match(pattern, org_name, re.UNICODE):
+                self.stdout.write(f"           ⚠️ Похоже на физлицо, а не организацию")
+                return None
+        
+        # Проверяем, не является ли это госструктурой
+        gov_indicators = [
+            'Министерство',
+            'Федеральное агентство',
+            'Федеральная служба',
+            'Российская Федерация',
+            'РФ',
+            'Госкорпорация',
+            'Государственная корпорация',
+            'Росатом',
+            'Роскосмос',
+        ]
+        
+        for indicator in gov_indicators:
+            if indicator.lower() in org_name.lower():
+                self.stdout.write(f"           ⚠️ Обнаружена госструктура, пропускаем организацию")
+                return None
+        
         base_slug = slugify(org_name[:50])
         if not base_slug:
             base_slug = 'organization'
         
-        # Проверяем уникальность slug
         unique_slug = base_slug
         counter = 1
         while Organization.objects.filter(slug=unique_slug).exists():
@@ -309,96 +378,84 @@ class InventionParser(BaseFIPSParser):
             counter += 1
         
         try:
-            # Находим максимальный существующий ID и увеличиваем на 1
-            from django.db.models import Max
-            max_id = Organization.objects.aggregate(Max('organization_id'))['organization_id__max'] or 0
+            max_id = Organization.objects.aggregate(models.Max('organization_id'))['organization_id__max'] or 0
             new_id = max_id + 1
             
+            # Создаем организацию только с полями из модели
             org, created = Organization.objects.get_or_create(
                 name=org_name,
                 defaults={
                     'organization_id': new_id,
                     'name': org_name,
-                    'short_name': org_name[:100] if len(org_name) > 100 else org_name,
-                    'slug': unique_slug
+                    'full_name': org_name,
+                    'short_name': org_name[:500] if len(org_name) > 500 else org_name,
+                    'slug': unique_slug,
+                    'register_opk': False,
+                    'strategic': False,
                 }
             )
             
             self.organization_cache[org_name] = org
+            self.stdout.write(f"           ✅ Организация создана/найдена: {org_name[:50]}...")
             return org
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"  Ошибка создания Organization '{org_name[:50]}...': {e}"))
             return None
     
     def find_or_create_foiv(self, holder_text):
-        """
-        Поиск или создание ФОИВ из текста патентообладателя.
-        Обрабатывает случаи:
-        - "Минпромторг России"
-        - "Российская Федерация в лице Минпромторга России"
-        - "Федеральное агентство ..."
-        - "Министерство ..."
-        """
+        """Поиск ФОИВ из текста патентообладателя"""
         if pd.isna(holder_text) or not holder_text:
             return None
         
         holder_text = str(holder_text).strip().strip('"')
+        self.stdout.write(f"           Поиск ФОИВ для: {holder_text[:100]}...")
         
-        # Проверяем кэш
         if holder_text in self.organization_cache:
             org = self.organization_cache[holder_text]
             if isinstance(org, FOIV):
+                self.stdout.write(f"           Найден в кэше: {org.short_name}")
                 return org
+        
+        gov_indicators = [
+            'Российская Федерация',
+            'РФ',
+            'Министерство',
+            'Федеральное агентство',
+            'Федеральная служба',
+            'Государственная корпорация',
+            'Госкорпорация',
+            'Росатом',
+            'Роскосмос',
+        ]
+        
+        is_gov = False
+        for indicator in gov_indicators:
+            if indicator.lower() in holder_text.lower():
+                is_gov = True
+                self.stdout.write(f"           Найден признак госструктуры: {indicator}")
+                break
+        
+        if not is_gov:
             return None
         
-        # Сначала пробуем извлечь из шаблона "РФ в лице"
-        foiv = self.extract_foiv_from_rf_template(holder_text)  # Теперь метод существует
-        if foiv:
-            self.organization_cache[holder_text] = foiv
-            return foiv
-        
-        # Паттерны для прямого поиска ФОИВ
         try:
             all_foivs = FOIV.objects.all()
             for foiv in all_foivs:
-                # Проверяем, содержится ли краткое название ФОИВ в тексте
                 if foiv.short_name and foiv.short_name.lower() in holder_text.lower():
+                    self.stdout.write(f"           Найден ФОИВ: {foiv.short_name}")
                     self.organization_cache[holder_text] = foiv
                     return foiv
                 
-                # Проверяем по частям (без "России")
-                short_without_russia = foiv.short_name.replace('России', '').strip()
-                if short_without_russia and short_without_russia.lower() in holder_text.lower():
-                    self.organization_cache[holder_text] = foiv
-                    return foiv
-        except Exception as e:
-            self.stdout.write(self.style.WARNING(f"  Ошибка при поиске ФОИВ: {e}"))
-        
-        return None
-    
-    def extract_foiv_from_rf_template(self, holder_text):
-        """
-        Извлекает название ФОИВ из шаблона "Российская Федерация в лице ..."
-        """
-        patterns = [
-            r'Российская\s+Федерация\s+в\s+лице\s+(.+)',
-            r'РФ\s+в\s+лице\s+(.+)',
-            r'Министерство\s+(.+)',
-            r'Федеральное\s+(?:агентство|служба)\s+(.+)',
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, holder_text, re.IGNORECASE)
-            if match:
-                extracted = match.group(1).strip()
-                # Пробуем найти ФОИВ по извлеченному названию
-                try:
-                    foiv = FOIV.objects.filter(short_name__icontains=extracted).first()
-                    if foiv:
+                words = foiv.short_name.split()
+                for word in words:
+                    if len(word) > 3 and word.lower() in holder_text.lower():
+                        self.stdout.write(f"           Найден ФОИВ по слову {word}: {foiv.short_name}")
+                        self.organization_cache[holder_text] = foiv
                         return foiv
-                except:
-                    pass
+        except Exception as e:
+            self.stdout.write(f"           Ошибка поиска ФОИВ: {e}")
         
+        self.stdout.write(f"           ФОИВ не найден в БД")
         return None
     
     def process_authors(self, row, ip_object):
@@ -418,6 +475,9 @@ class InventionParser(BaseFIPSParser):
                     person = self.find_or_create_person(author_data)
                     if person:
                         ip_object.authors.add(person)
+                        display_name = author_data.get('full_name', 
+                                                       f"{author_data['last_name']} {author_data['first_name']} {author_data['middle_name']}".strip())
+                        self.stdout.write(f"        Автор: {display_name}")
             else:
                 self.stdout.write("     👥 Авторы: нет данных")
             
@@ -425,7 +485,7 @@ class InventionParser(BaseFIPSParser):
             self.stdout.write(self.style.WARNING(f"  Ошибка обработки авторов: {e}"))
     
     def process_patent_holders(self, row, ip_object):
-        """Обработка патентообладателей (организации и ФОИВ)"""
+        """Обработка патентообладателей"""
         holders_str = row.get('patent holders')
         
         if pd.isna(holders_str) or not holders_str:
@@ -438,23 +498,83 @@ class InventionParser(BaseFIPSParser):
             if holders_list:
                 self.stdout.write(f"     🏢 Патентообладатели: {len(holders_list)}")
                 for holder_name in holders_list:
-                    # Сначала проверяем, не ФОИВ ли это
-                    foiv = self.find_or_create_foiv(holder_name)
-                    if foiv:
-                        ip_object.owner_foivs.add(foiv)
-                        self.stdout.write(f"        ФОИВ: {foiv.short_name}")
-                        continue
+                    self.stdout.write(f"        Анализ: {holder_name[:100]}...")
                     
-                    # Если не ФОИВ, пробуем как организацию
-                    org = self.find_or_create_organization(holder_name)
-                    if org:
-                        ip_object.owner_organizations.add(org)
-                        self.stdout.write(f"        Организация: {org.name[:50]}...")
+                    # Приоритет 1: ФОИВ/госструктуры
+                    gov_indicators = [
+                        'Министерство',
+                        'Федеральное агентство',
+                        'Федеральная служба',
+                        'Российская Федерация',
+                        'РФ',
+                        'Госкорпорация',
+                        'Государственная корпорация',
+                        'Росатом',
+                        'Роскосмос',
+                    ]
+                    
+                    is_gov = any(indicator.lower() in holder_name.lower() for indicator in gov_indicators)
+                    
+                    if is_gov:
+                        foiv = self.find_or_create_foiv(holder_name)
+                        if foiv:
+                            ip_object.owner_foivs.add(foiv)
+                            self.stdout.write(f"        ✅ ФОИВ: {foiv.short_name}")
+                            continue
+                        else:
+                            self.stdout.write(f"        ⚠️ Госструктура не найдена в БД FOIV, пропускаем")
+                            continue
+                    
+                    # Приоритет 2: Организации
+                    org_indicators = [
+                        'ООО', 'ЗАО', 'ОАО', 'АО', 'ПАО', 'ФГУП', 'ФГБУ',
+                        'Общество с ограниченной ответственностью',
+                        'Открытое акционерное общество',
+                        'Закрытое акционерное общество',
+                        'Федеральное государственное унитарное предприятие',
+                        'Федеральное государственное бюджетное учреждение',
+                        'Акционерное общество',
+                        'Корпорация', 'Холдинг', 'Концерн',
+                        'Институт', 'Университет', 'Академия',
+                        'Завод', 'Комбинат', 'Фабрика',
+                        'Company', 'Corporation', 'Inc', 'Ltd', 'AG', 'GmbH', 'NV', 'SA', 'BV',
+                        'ИНК', 'ЛТД', 'ЛИМИТЕД',
+                        'РАЙХЛЕ \+ ДЕ-МАССАРИ АГ',
+                    ]
+                    
+                    is_org = any(indicator.lower() in holder_name.lower() for indicator in org_indicators)
+                    
+                    if re.search(r'\([A-Z]{2}\)', holder_name):
+                        is_org = True
+                    
+                    if is_org:
+                        org = self.find_or_create_organization(holder_name)
+                        if org:
+                            ip_object.owner_organizations.add(org)
+                            self.stdout.write(f"        ✅ Организация: {org.name[:50]}...")
+                            continue
+                    
+                    # Приоритет 3: Физлица
+                    words = holder_name.split()
+                    has_special = any(c in holder_name for c in [',', ';', '(', ')', '+', '&', '@', '#', '$', '%', '^', '*', '='])
+                    all_words_alpha = all(re.sub(r'[^а-яёa-z]', '', w.lower()).isalpha() for w in words if w)
+                    
+                    if 2 <= len(words) <= 4 and not has_special and all_words_alpha:
+                        self.stdout.write(f"           Определено как физлицо: {len(words)} слова")
+                        person = self.find_or_create_person_from_name(holder_name)
+                        if person:
+                            ip_object.owner_persons.add(person)
+                            self.stdout.write(f"        ✅ Физлицо: {person.get_full_name()}")
+                            continue
+                    
+                    self.stdout.write(f"        ⚠️ Не удалось определить тип: {holder_name[:50]}...")
             else:
                 self.stdout.write("     🏢 Патентообладатели: нет данных")
             
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"  Ошибка обработки патентообладателей: {e}"))
+            import traceback
+            traceback.print_exc()
     
     def process_correspondence_address(self, row, ip_object):
         """Обработка адреса для переписки"""
@@ -478,14 +598,12 @@ class InventionParser(BaseFIPSParser):
         
         self.stdout.write(f"\n  📄 Обработка патента №{registration_number}")
         
-        # Основные поля - только те, что есть в модели IPObject
         name = self.clean_string(row.get('invention name'))
         if not name:
             name = f"Изобретение №{registration_number}"
         
         self.stdout.write(f"     Название: {name[:50]}...")
         
-        # Даты (все эти поля есть в модели)
         application_date = self.parse_date(row.get('application date'))
         registration_date = self.parse_date(row.get('registration date'))
         patent_starting_date = self.parse_date(row.get('patent starting date'))
@@ -496,25 +614,19 @@ class InventionParser(BaseFIPSParser):
         if registration_date:
             self.stdout.write(f"     Дата регистрации: {registration_date}")
         
-        # Статус
         actual = self.parse_bool(row.get('actual'))
         self.stdout.write(f"     Статус: {'Активен' if actual else 'Не активен'}")
         
-        # URL публикации
         publication_url = self.clean_string(row.get('publication URL'))
+        abstract = self.clean_string(row.get('abstract'))
+        claims = self.clean_string(row.get('claims'))
         
-        # Дополнительные текстовые поля, которые есть в модели
-        abstract = self.clean_string(row.get('abstract'))  # реферат
-        claims = self.clean_string(row.get('claims'))      # формула
-        
-        # Пытаемся извлечь год создания из дат
         creation_year = None
         if application_date:
             creation_year = application_date.year
         elif registration_date:
             creation_year = registration_date.year
         
-        # Проверяем, существует ли уже такой объект
         try:
             ip_object, created = IPObject.objects.get_or_create(
                 registration_number=registration_number,
@@ -539,7 +651,6 @@ class InventionParser(BaseFIPSParser):
         if self.command.dry_run:
             return 'created' if created else 'updated'
         
-        # Если объект уже существует, обновляем поля
         if not created:
             update_fields = []
             
@@ -587,10 +698,7 @@ class InventionParser(BaseFIPSParser):
                 ip_object.save(update_fields=update_fields)
                 self.stdout.write(f"     Обновлено полей: {len(update_fields)}")
         
-        # Обрабатываем авторов (ManyToMany)
         self.process_authors(row, ip_object)
-        
-        # Обрабатываем патентообладателей (разделяем на организации и ФОИВ)
         self.process_patent_holders(row, ip_object)
         
         return 'created' if created else 'updated'
@@ -613,7 +721,6 @@ class InventionParser(BaseFIPSParser):
             stats['errors'] += 1
             return stats
         
-        # Обрабатываем записи с прогресс-баром
         with tqdm(total=len(df), desc="  Обработка записей", unit=" зап") as pbar:
             for idx, row in df.iterrows():
                 try:
