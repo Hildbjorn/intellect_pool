@@ -7,6 +7,7 @@
 import logging
 import re
 from datetime import datetime
+from typing import Optional, Tuple, List, Dict, Any
 
 from django.db import models
 from django.core.management.base import BaseCommand, CommandError
@@ -26,6 +27,167 @@ from common.utils.dates import DateUtils
 logger = logging.getLogger(__name__)
 
 
+class EntityTypeDetector:
+    """
+    Детектор типов сущностей (ФОИВ, организация, физлицо)
+    Вынесен в отдельный класс для переиспользования
+    """
+    
+    # Признаки ФОИВ/госструктур
+    GOV_INDICATORS = [
+        'Министерство',
+        'Федеральное агентство',
+        'Федеральная служба',
+        'Российская Федерация',
+        'РФ',
+        'Госкорпорация',
+        'Государственная корпорация',
+        'Росатом',
+        'Роскосмос',
+        'Государственное предприятие',
+        'Государственный комитет',
+        'Администрация',
+        'Правительство',
+        'Совет Министров',
+        'Министерство обороны',
+        'МВД',
+        'МЧС',
+        'ФСБ',
+        'Минздрав',
+        'Минобрнауки',
+        'Минкультуры',
+        'Минприроды',
+        'Минпромторг',
+        'Минсельхоз',
+        'Минтранс',
+        'Минтруд',
+        'Минфин',
+        'Минцифры',
+        'Росстандарт',
+        'Россельхознадзор',
+        'Росрыболовство',
+        'ФНС',
+        'ФТС',
+        'Казначейство',
+        'Росимущество',
+        'Роскомнадзор',
+        'Роспатент',
+        'Росстат',
+        'Росреестр',
+        'Роспотребнадзор',
+        'ФАС',
+    ]
+    
+    # Признаки организаций
+    ORG_INDICATORS = [
+        'ООО', 'ЗАО', 'ОАО', 'АО', 'ПАО', 'ФГУП', 'ФГБУ', 'ТОО', 'ИЧП',
+        'Общество с ограниченной ответственностью',
+        'Открытое акционерное общество',
+        'Закрытое акционерное общество',
+        'Федеральное государственное унитарное предприятие',
+        'Федеральное государственное бюджетное учреждение',
+        'Федеральное государственное автономное образовательное учреждение',
+        'Акционерное общество',
+        'Корпорация', 'Холдинг', 'Концерн',
+        'Институт', 'Университет', 'Академия',
+        'Завод', 'Комбинат', 'Фабрика',
+        'Лаборатория', 'Фирма', 'Центр', 'Бюро', 'Трест',
+        'НИИ', 'КБ', 'ПО', 'НПО', 'МНТК', 'АОЗТ',
+        'Company', 'Corporation', 'Inc', 'Ltd', 'AG', 'GmbH', 'NV', 'SA', 'BV',
+        'ИНК', 'ЛТД', 'ЛИМИТЕД',
+    ]
+    
+    # Паттерны для русских ФИО
+    RUSSIAN_NAME_PATTERNS = [
+        r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+$',  # Иванов Иван Иванович
+        r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\.$',  # Иванов И.И.
+        r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+$',  # Иванов Иван
+        r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.$',  # Иванов И.
+        r'^[А-ЯЁ]\.[А-ЯЁ]\.\s+[А-ЯЁ][а-яё]+',  # И.И. Иванов
+    ]
+    
+    @classmethod
+    def is_foiv(cls, text: str) -> bool:
+        """Проверка, является ли текст ФОИВ/госструктурой"""
+        if not text:
+            return False
+        text_lower = text.lower()
+        return any(indicator.lower() in text_lower for indicator in cls.GOV_INDICATORS)
+    
+    @classmethod
+    def is_organization(cls, text: str) -> bool:
+        """Проверка, является ли текст организацией"""
+        if not text:
+            return False
+        
+        text_lower = text.lower()
+        
+        # Проверка по индикаторам
+        if any(indicator.lower() in text_lower for indicator in cls.ORG_INDICATORS):
+            return True
+        
+        # Проверка на код страны в скобках
+        if re.search(r'\([A-Z]{2}\)', text):
+            return True
+        
+        # Если есть запятая и похоже на юридический адрес
+        if ',' in text and len(text.split(',')) >= 2:
+            return True
+        
+        return False
+    
+    @classmethod
+    def is_person(cls, text: str) -> bool:
+        """Проверка, является ли текст физическим лицом"""
+        if not text or len(text) < 6:
+            return False
+        
+        # Если есть признаки организации или ФОИВ - не физлицо
+        if cls.is_organization(text) or cls.is_foiv(text):
+            return False
+        
+        text = text.strip()
+        
+        # Проверка по паттернам русских ФИО
+        for pattern in cls.RUSSIAN_NAME_PATTERNS:
+            if re.match(pattern, text, re.UNICODE):
+                return True
+        
+        # Паттерны для иностранных ФИО
+        if re.match(r'^[A-Za-z]+\s+[A-Za-z]+$', text):  # John Smith
+            return True
+        
+        if re.match(r'^[A-Za-z]+\s+[A-Za-z]+\s+[A-Za-z]+$', text):  # John Robert Smith
+            return True
+        
+        # Фамилия, Имя через запятую (иностранный формат)
+        if ',' in text:
+            parts = text.split(',')
+            if len(parts) == 2:
+                name_part = parts[0].strip()
+                surname_part = parts[1].strip()
+                if (len(name_part.split()) <= 2 and len(surname_part.split()) <= 2 and
+                    not any(c in name_part+surname_part for c in ['ООО', 'АО', 'ЗАО', 'Ltd', 'Inc'])):
+                    return True
+        
+        return False
+    
+    @classmethod
+    def detect_type(cls, text: str) -> str:
+        """
+        Определение типа сущности
+        Возвращает: 'foiv', 'organization', 'person', 'unknown'
+        """
+        if cls.is_foiv(text):
+            return 'foiv'
+        elif cls.is_organization(text):
+            return 'organization'
+        elif cls.is_person(text):
+            return 'person'
+        else:
+            return 'unknown'
+
+
 class BaseFIPSParser:
     """
     Базовый класс для всех парсеров каталогов ФИПС.
@@ -41,8 +203,12 @@ class BaseFIPSParser:
         self.country_cache = {}
         self.person_cache = {}
         self.organization_cache = {}
+        self.foiv_cache = {}
         self.city_cache = {}
         
+        # Детектор типов
+        self.type_detector = EntityTypeDetector()
+    
     def get_ip_type(self):
         """Должен быть переопределен в дочерних классах"""
         raise NotImplementedError
@@ -94,6 +260,31 @@ class BaseFIPSParser:
         value = str(value).lower().strip()
         return value in ['1', 'true', 'yes', 'да', 'действует', 'true', 't', '1.0', 'активен']
     
+    def normalize_name_case(self, name):
+        """
+        Приводит имя к правильному регистру:
+        ФОМИН АРТЕМ ВЛАДИМИРОВИЧ -> Фомин Артем Владимирович
+        """
+        if not name:
+            return name
+        
+        parts = name.split()
+        normalized_parts = []
+        
+        for part in parts:
+            if part and len(part) > 0:
+                part = part.strip('.')
+                
+                if len(part) == 1:
+                    normalized_parts.append(part.upper() + '.')
+                elif '.' in part:
+                    initials = [p for p in part if p.isalpha()]
+                    normalized_parts.append(''.join([i.upper() + '.' for i in initials]))
+                else:
+                    normalized_parts.append(part[0].upper() + part[1:].lower())
+        
+        return ' '.join(normalized_parts)
+    
     def get_or_create_country(self, code):
         """Получение или создание страны по коду"""
         if not code or pd.isna(code):
@@ -133,43 +324,6 @@ class BaseFIPSParser:
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"  Ошибка создания страны {code}: {e}"))
             return None
-
-
-class InventionParser(BaseFIPSParser):
-    """Парсер для изобретений"""
-    
-    def get_ip_type(self):
-        """Получение типа РИД для изобретений"""
-        return IPType.objects.filter(slug='invention').first()
-    
-    def get_required_columns(self):
-        """Обязательные колонки для работы парсера"""
-        return ['registration number', 'invention name']
-    
-    def normalize_name_case(self, name):
-        """
-        Приводит имя к правильному регистру:
-        ФОМИН АРТЕМ ВЛАДИМИРОВИЧ -> Фомин Артем Владимирович
-        """
-        if not name:
-            return name
-        
-        parts = name.split()
-        normalized_parts = []
-        
-        for part in parts:
-            if part and len(part) > 0:
-                part = part.strip('.')
-                
-                if len(part) == 1:
-                    normalized_parts.append(part.upper() + '.')
-                elif '.' in part:
-                    initials = [p for p in part if p.isalpha()]
-                    normalized_parts.append(''.join([i.upper() + '.' for i in initials]))
-                else:
-                    normalized_parts.append(part[0].upper() + part[1:].lower())
-        
-        return ' '.join(normalized_parts)
     
     def parse_authors(self, authors_str):
         """Парсинг строки с авторами"""
@@ -328,44 +482,8 @@ class InventionParser(BaseFIPSParser):
         if not org_name or org_name == 'null' or org_name == 'None':
             return None
         
-        self.stdout.write(f"           Создание организации: {org_name[:100]}...")
-        
         if org_name in self.organization_cache:
-            org = self.organization_cache[org_name]
-            if isinstance(org, Organization):
-                return org
-            return None
-        
-        # Проверяем, не является ли это физическим лицом
-        person_patterns = [
-            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+$',
-            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\.$',
-            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+$',
-            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.$',
-        ]
-        
-        for pattern in person_patterns:
-            if re.match(pattern, org_name, re.UNICODE):
-                self.stdout.write(f"           ⚠️ Похоже на физлицо, а не организацию")
-                return None
-        
-        # Проверяем, не является ли это госструктурой
-        gov_indicators = [
-            'Министерство',
-            'Федеральное агентство',
-            'Федеральная служба',
-            'Российская Федерация',
-            'РФ',
-            'Госкорпорация',
-            'Государственная корпорация',
-            'Росатом',
-            'Роскосмос',
-        ]
-        
-        for indicator in gov_indicators:
-            if indicator.lower() in org_name.lower():
-                self.stdout.write(f"           ⚠️ Обнаружена госструктура, пропускаем организацию")
-                return None
+            return self.organization_cache[org_name]
         
         base_slug = slugify(org_name[:50])
         if not base_slug:
@@ -381,7 +499,6 @@ class InventionParser(BaseFIPSParser):
             max_id = Organization.objects.aggregate(models.Max('organization_id'))['organization_id__max'] or 0
             new_id = max_id + 1
             
-            # Создаем организацию только с полями из модели
             org, created = Organization.objects.get_or_create(
                 name=org_name,
                 defaults={
@@ -396,10 +513,9 @@ class InventionParser(BaseFIPSParser):
             )
             
             self.organization_cache[org_name] = org
-            self.stdout.write(f"           ✅ Организация создана/найдена: {org_name[:50]}...")
             return org
         except Exception as e:
-            self.stdout.write(self.style.WARNING(f"  Ошибка создания Organization '{org_name[:50]}...': {e}"))
+            self.stdout.write(self.style.WARNING(f"  Ошибка создания Organization: {e}"))
             return None
     
     def find_or_create_foiv(self, holder_text):
@@ -408,189 +524,86 @@ class InventionParser(BaseFIPSParser):
             return None
         
         holder_text = str(holder_text).strip().strip('"')
-        self.stdout.write(f"           Поиск ФОИВ для: {holder_text[:100]}...")
         
-        if holder_text in self.organization_cache:
-            org = self.organization_cache[holder_text]
-            if isinstance(org, FOIV):
-                self.stdout.write(f"           Найден в кэше: {org.short_name}")
-                return org
-        
-        gov_indicators = [
-            'Российская Федерация',
-            'РФ',
-            'Министерство',
-            'Федеральное агентство',
-            'Федеральная служба',
-            'Государственная корпорация',
-            'Госкорпорация',
-            'Росатом',
-            'Роскосмос',
-        ]
-        
-        is_gov = False
-        for indicator in gov_indicators:
-            if indicator.lower() in holder_text.lower():
-                is_gov = True
-                self.stdout.write(f"           Найден признак госструктуры: {indicator}")
-                break
-        
-        if not is_gov:
-            return None
+        if holder_text in self.foiv_cache:
+            return self.foiv_cache[holder_text]
         
         try:
             all_foivs = FOIV.objects.all()
             for foiv in all_foivs:
                 if foiv.short_name and foiv.short_name.lower() in holder_text.lower():
-                    self.stdout.write(f"           Найден ФОИВ: {foiv.short_name}")
-                    self.organization_cache[holder_text] = foiv
+                    self.foiv_cache[holder_text] = foiv
                     return foiv
                 
                 words = foiv.short_name.split()
                 for word in words:
                     if len(word) > 3 and word.lower() in holder_text.lower():
-                        self.stdout.write(f"           Найден ФОИВ по слову {word}: {foiv.short_name}")
-                        self.organization_cache[holder_text] = foiv
+                        self.foiv_cache[holder_text] = foiv
                         return foiv
         except Exception as e:
-            self.stdout.write(f"           Ошибка поиска ФОИВ: {e}")
+            self.stdout.write(self.style.WARNING(f"  Ошибка поиска ФОИВ: {e}"))
         
-        self.stdout.write(f"           ФОИВ не найден в БД")
         return None
     
-    def process_authors(self, row, ip_object):
-        """Обработка авторов"""
-        authors_str = row.get('authors')
+    def process_entity(self, entity_name, ip_object, entity_type=None):
+        """
+        Универсальный метод обработки сущности
+        entity_type может быть 'foiv', 'organization', 'person', None (auto-detect)
+        """
+        if pd.isna(entity_name) or not entity_name:
+            return False
         
-        if pd.isna(authors_str) or not authors_str:
-            self.stdout.write("     👥 Авторы: нет данных")
-            return
+        if entity_type is None:
+            entity_type = self.type_detector.detect_type(entity_name)
         
-        try:
-            authors_data = self.parse_authors(authors_str)
-            
-            if authors_data:
-                self.stdout.write(f"     👥 Авторы: {len(authors_data)} чел.")
-                for author_data in authors_data:
-                    person = self.find_or_create_person(author_data)
-                    if person:
-                        ip_object.authors.add(person)
-                        display_name = author_data.get('full_name', 
-                                                       f"{author_data['last_name']} {author_data['first_name']} {author_data['middle_name']}".strip())
-                        self.stdout.write(f"        Автор: {display_name}")
+        self.stdout.write(f"           Определен тип: {entity_type}")
+        
+        if entity_type == 'foiv':
+            foiv = self.find_or_create_foiv(entity_name)
+            if foiv:
+                ip_object.owner_foivs.add(foiv)
+                self.stdout.write(f"        ✅ ФОИВ: {foiv.short_name}")
+                return True
             else:
-                self.stdout.write("     👥 Авторы: нет данных")
-            
-        except Exception as e:
-            self.stdout.write(self.style.WARNING(f"  Ошибка обработки авторов: {e}"))
-    
-    def process_patent_holders(self, row, ip_object):
-        """Обработка патентообладателей"""
-        holders_str = row.get('patent holders')
+                self.stdout.write(f"        ⚠️ ФОИВ не найден в БД")
+                return False
         
-        if pd.isna(holders_str) or not holders_str:
-            self.stdout.write("     🏢 Патентообладатели: нет данных")
+        elif entity_type == 'organization':
+            org = self.find_or_create_organization(entity_name)
+            if org:
+                ip_object.owner_organizations.add(org)
+                self.stdout.write(f"        ✅ Организация: {org.name[:50]}...")
+                return True
+        
+        elif entity_type == 'person':
+            person = self.find_or_create_person_from_name(entity_name)
+            if person:
+                ip_object.owner_persons.add(person)
+                self.stdout.write(f"        ✅ Физлицо: {person.get_full_name()}")
+                return True
+        
+        return False
+    
+    def process_holders(self, holders_list, ip_object):
+        """Универсальная обработка списка патентообладателей"""
+        if not holders_list:
             return
         
-        try:
-            holders_list = self.parse_patent_holders(holders_str)
-            
-            if holders_list:
-                self.stdout.write(f"     🏢 Патентообладатели: {len(holders_list)}")
-                for holder_name in holders_list:
-                    self.stdout.write(f"        Анализ: {holder_name[:100]}...")
-                    
-                    # Приоритет 1: ФОИВ/госструктуры
-                    gov_indicators = [
-                        'Министерство',
-                        'Федеральное агентство',
-                        'Федеральная служба',
-                        'Российская Федерация',
-                        'РФ',
-                        'Госкорпорация',
-                        'Государственная корпорация',
-                        'Росатом',
-                        'Роскосмос',
-                    ]
-                    
-                    is_gov = any(indicator.lower() in holder_name.lower() for indicator in gov_indicators)
-                    
-                    if is_gov:
-                        foiv = self.find_or_create_foiv(holder_name)
-                        if foiv:
-                            ip_object.owner_foivs.add(foiv)
-                            self.stdout.write(f"        ✅ ФОИВ: {foiv.short_name}")
-                            continue
-                        else:
-                            self.stdout.write(f"        ⚠️ Госструктура не найдена в БД FOIV, пропускаем")
-                            continue
-                    
-                    # Приоритет 2: Организации
-                    org_indicators = [
-                        'ООО', 'ЗАО', 'ОАО', 'АО', 'ПАО', 'ФГУП', 'ФГБУ',
-                        'Общество с ограниченной ответственностью',
-                        'Открытое акционерное общество',
-                        'Закрытое акционерное общество',
-                        'Федеральное государственное унитарное предприятие',
-                        'Федеральное государственное бюджетное учреждение',
-                        'Акционерное общество',
-                        'Корпорация', 'Холдинг', 'Концерн',
-                        'Институт', 'Университет', 'Академия',
-                        'Завод', 'Комбинат', 'Фабрика',
-                        'Company', 'Corporation', 'Inc', 'Ltd', 'AG', 'GmbH', 'NV', 'SA', 'BV',
-                        'ИНК', 'ЛТД', 'ЛИМИТЕД',
-                        'РАЙХЛЕ \+ ДЕ-МАССАРИ АГ',
-                    ]
-                    
-                    is_org = any(indicator.lower() in holder_name.lower() for indicator in org_indicators)
-                    
-                    if re.search(r'\([A-Z]{2}\)', holder_name):
-                        is_org = True
-                    
-                    if is_org:
-                        org = self.find_or_create_organization(holder_name)
-                        if org:
-                            ip_object.owner_organizations.add(org)
-                            self.stdout.write(f"        ✅ Организация: {org.name[:50]}...")
-                            continue
-                    
-                    # Приоритет 3: Физлица
-                    words = holder_name.split()
-                    has_special = any(c in holder_name for c in [',', ';', '(', ')', '+', '&', '@', '#', '$', '%', '^', '*', '='])
-                    all_words_alpha = all(re.sub(r'[^а-яёa-z]', '', w.lower()).isalpha() for w in words if w)
-                    
-                    if 2 <= len(words) <= 4 and not has_special and all_words_alpha:
-                        self.stdout.write(f"           Определено как физлицо: {len(words)} слова")
-                        person = self.find_or_create_person_from_name(holder_name)
-                        if person:
-                            ip_object.owner_persons.add(person)
-                            self.stdout.write(f"        ✅ Физлицо: {person.get_full_name()}")
-                            continue
-                    
-                    self.stdout.write(f"        ⚠️ Не удалось определить тип: {holder_name[:50]}...")
-            else:
-                self.stdout.write("     🏢 Патентообладатели: нет данных")
-            
-        except Exception as e:
-            self.stdout.write(self.style.WARNING(f"  Ошибка обработки патентообладателей: {e}"))
-            import traceback
-            traceback.print_exc()
+        for holder_name in holders_list:
+            self.stdout.write(f"        Анализ: {holder_name[:100]}...")
+            self.process_entity(holder_name, ip_object)
+
+
+class InventionParser(BaseFIPSParser):
+    """Парсер для изобретений"""
     
-    def process_correspondence_address(self, row, ip_object):
-        """Обработка адреса для переписки"""
-        address = row.get('correspondence address')
-        
-        if pd.isna(address) or not address:
-            return
-        
-        try:
-            if address and len(str(address)) > 10:
-                self.stdout.write(f"     📍 Адрес: {str(address)[:50]}...")
-        except Exception as e:
-            self.stdout.write(self.style.WARNING(f"  Ошибка обработки адреса: {e}"))
+    def get_ip_type(self):
+        return IPType.objects.filter(slug='invention').first()
+    
+    def get_required_columns(self):
+        return ['registration number', 'invention name']
     
     def process_row(self, row, catalogue, ip_type):
-        """Обработка одной строки данных"""
         registration_number = self.clean_string(row.get('registration number'))
         
         if not registration_number:
@@ -698,13 +711,37 @@ class InventionParser(BaseFIPSParser):
                 ip_object.save(update_fields=update_fields)
                 self.stdout.write(f"     Обновлено полей: {len(update_fields)}")
         
-        self.process_authors(row, ip_object)
-        self.process_patent_holders(row, ip_object)
+        # Обработка авторов
+        authors_str = row.get('authors')
+        if not pd.isna(authors_str) and authors_str:
+            authors_data = self.parse_authors(authors_str)
+            if authors_data:
+                self.stdout.write(f"     👥 Авторы: {len(authors_data)} чел.")
+                for author_data in authors_data:
+                    person = self.find_or_create_person(author_data)
+                    if person:
+                        ip_object.authors.add(person)
+                        self.stdout.write(f"        Автор: {author_data['full_name']}")
+            else:
+                self.stdout.write("     👥 Авторы: нет данных")
+        else:
+            self.stdout.write("     👥 Авторы: нет данных")
+        
+        # Обработка патентообладателей
+        holders_str = row.get('patent holders')
+        if not pd.isna(holders_str) and holders_str:
+            holders_list = self.parse_patent_holders(holders_str)
+            if holders_list:
+                self.stdout.write(f"     🏢 Патентообладатели: {len(holders_list)}")
+                self.process_holders(holders_list, ip_object)
+            else:
+                self.stdout.write("     🏢 Патентообладатели: нет данных")
+        else:
+            self.stdout.write("     🏢 Патентообладатели: нет данных")
         
         return 'created' if created else 'updated'
     
     def parse_dataframe(self, df, catalogue):
-        """Парсинг DataFrame с изобретениями"""
         self.stdout.write(self.style.SUCCESS("  🔄 Начинаем парсинг изобретений..."))
         
         stats = {
@@ -751,9 +788,8 @@ class InventionParser(BaseFIPSParser):
         return stats
 
 
+# Остальные парсеры будут использовать те же методы из BaseFIPSParser
 class UtilityModelParser(BaseFIPSParser):
-    """Парсер для полезных моделей"""
-    
     def get_ip_type(self):
         return IPType.objects.filter(slug='utility-model').first()
     
@@ -761,15 +797,11 @@ class UtilityModelParser(BaseFIPSParser):
         return ['registration number', 'utility model name']
     
     def parse_dataframe(self, df, catalogue):
-        """Парсинг DataFrame с полезными моделями"""
         self.stdout.write(self.style.SUCCESS("  Парсер полезных моделей готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
 class IndustrialDesignParser(BaseFIPSParser):
-    """Парсер для промышленных образцов"""
-    
     def get_ip_type(self):
         return IPType.objects.filter(slug='industrial-design').first()
     
@@ -777,15 +809,11 @@ class IndustrialDesignParser(BaseFIPSParser):
         return ['registration number', 'industrial design name']
     
     def parse_dataframe(self, df, catalogue):
-        """Парсинг DataFrame с промышленными образцами"""
         self.stdout.write(self.style.SUCCESS("  Парсер промышленных образцов готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
 class IntegratedCircuitTopologyParser(BaseFIPSParser):
-    """Парсер для топологий интегральных микросхем"""
-    
     def get_ip_type(self):
         return IPType.objects.filter(slug='integrated-circuit-topology').first()
     
@@ -793,15 +821,11 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
         return ['registration number', 'microchip name']
     
     def parse_dataframe(self, df, catalogue):
-        """Парсинг DataFrame с топологиями микросхем"""
         self.stdout.write(self.style.SUCCESS("  Парсер топологий микросхем готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
 class ComputerProgramParser(BaseFIPSParser):
-    """Парсер для программ для ЭВМ"""
-    
     def get_ip_type(self):
         return IPType.objects.filter(slug='computer-program').first()
     
@@ -809,15 +833,11 @@ class ComputerProgramParser(BaseFIPSParser):
         return ['registration number', 'program name']
     
     def parse_dataframe(self, df, catalogue):
-        """Парсинг DataFrame с программами для ЭВМ"""
         self.stdout.write(self.style.SUCCESS("  Парсер программ для ЭВМ готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
 class DatabaseParser(BaseFIPSParser):
-    """Парсер для баз данных"""
-    
     def get_ip_type(self):
         return IPType.objects.filter(slug='database').first()
     
@@ -825,9 +845,7 @@ class DatabaseParser(BaseFIPSParser):
         return ['registration number', 'db name']
     
     def parse_dataframe(self, df, catalogue):
-        """Парсинг DataFrame с базами данных"""
         self.stdout.write(self.style.SUCCESS("  Парсер баз данных готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
@@ -835,66 +853,22 @@ class Command(BaseCommand):
     help = 'Парсинг каталогов открытых данных ФИПС Роспатента'
     
     def add_arguments(self, parser):
-        parser.add_argument(
-            '--catalogue-id',
-            type=int,
-            help='ID конкретного каталога для парсинга',
-        )
-        parser.add_argument(
-            '--ip-type',
-            type=str,
-            choices=['invention', 'utility-model', 'industrial-design', 
-                    'integrated-circuit-topology', 'computer-program', 'database'],
-            help='Тип РИД для парсинга (если не указан, парсятся все)',
-        )
-        parser.add_argument(
-            '--dry-run',
-            action='store_true',
-            help='Режим проверки без сохранения в БД',
-        )
-        parser.add_argument(
-            '--encoding',
-            type=str,
-            default='utf-8',
-            help='Кодировка CSV файла',
-        )
-        parser.add_argument(
-            '--delimiter',
-            type=str,
-            default=',',
-            help='Разделитель в CSV файле',
-        )
-        parser.add_argument(
-            '--batch-size',
-            type=int,
-            default=100,
-            help='Размер пакета для bulk-операций',
-        )
-        parser.add_argument(
-            '--min-year',
-            type=int,
-            default=2000,
-            help='Минимальный год регистрации для фильтрации',
-        )
-        parser.add_argument(
-            '--skip-filters',
-            action='store_true',
-            help='Пропустить фильтрацию (обработать все записи)',
-        )
-        parser.add_argument(
-            '--only-active',
-            action='store_true',
-            help='Парсить только активные патенты (actual = True)',
-        )
-        parser.add_argument(
-            '--max-rows',
-            type=int,
-            help='Максимальное количество строк для обработки (для тестирования)',
-        )
+        parser.add_argument('--catalogue-id', type=int, help='ID конкретного каталога для парсинга')
+        parser.add_argument('--ip-type', type=str, 
+                          choices=['invention', 'utility-model', 'industrial-design', 
+                                  'integrated-circuit-topology', 'computer-program', 'database'],
+                          help='Тип РИД для парсинга (если не указан, парсятся все)')
+        parser.add_argument('--dry-run', action='store_true', help='Режим проверки без сохранения в БД')
+        parser.add_argument('--encoding', type=str, default='utf-8', help='Кодировка CSV файла')
+        parser.add_argument('--delimiter', type=str, default=',', help='Разделитель в CSV файле')
+        parser.add_argument('--batch-size', type=int, default=100, help='Размер пакета для bulk-операций')
+        parser.add_argument('--min-year', type=int, default=2000, help='Минимальный год регистрации для фильтрации')
+        parser.add_argument('--skip-filters', action='store_true', help='Пропустить фильтрацию (обработать все записи)')
+        parser.add_argument('--only-active', action='store_true', help='Парсить только активные патенты (actual = True)')
+        parser.add_argument('--max-rows', type=int, help='Максимальное количество строк для обработки (для тестирования)')
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Регистрируем парсеры для каждого типа РИД
         self.parsers = {
             'invention': InventionParser(self),
             'utility-model': UtilityModelParser(self),
@@ -920,7 +894,6 @@ class Command(BaseCommand):
         if self.only_active:
             self.stdout.write(self.style.WARNING("📌 Режим: парсинг только активных записей (actual = True)"))
         
-        # Получаем каталоги для парсинга
         catalogues = self.get_catalogues(options.get('catalogue_id'), options.get('ip_type'))
         
         if not catalogues:
@@ -935,7 +908,6 @@ class Command(BaseCommand):
             'errors': 0
         }
         
-        # Обрабатываем каждый каталог
         for catalogue in catalogues:
             self.stdout.write(self.style.SUCCESS(f"\n{'='*60}"))
             self.stdout.write(self.style.SUCCESS(f"📁 Обработка каталога: {catalogue.name}"))
@@ -944,18 +916,12 @@ class Command(BaseCommand):
             
             stats = self.process_catalogue(catalogue)
             
-            # Обновляем общую статистику
             for key in ['processed', 'created', 'updated', 'skipped', 'errors']:
                 total_stats[key] += stats.get(key, 0)
         
-        # Выводим итоговую статистику
         self.print_final_stats(total_stats)
     
     def get_catalogues(self, catalogue_id=None, ip_type_slug=None):
-        """
-        Получение списка каталогов для парсинга.
-        Можно получить по ID, по типу РИД или все непрочитанные.
-        """
         queryset = FipsOpenDataCatalogue.objects.all()
         
         if catalogue_id:
@@ -963,13 +929,11 @@ class Command(BaseCommand):
         elif ip_type_slug:
             queryset = queryset.filter(ip_type__slug=ip_type_slug)
         else:
-            # Если не указаны фильтры, берем все каталоги с файлами
             queryset = queryset.exclude(catalogue_file='')
         
         return queryset.order_by('ip_type__id', '-publication_date')
     
     def process_catalogue(self, catalogue):
-        """Обработка одного каталога"""
         stats = {
             'processed': 0,
             'created': 0,
@@ -983,7 +947,6 @@ class Command(BaseCommand):
             stats['errors'] += 1
             return stats
         
-        # Определяем тип РИД и соответствующий парсер
         ip_type_slug = catalogue.ip_type.slug if catalogue.ip_type else None
         
         if ip_type_slug not in self.parsers:
@@ -992,8 +955,6 @@ class Command(BaseCommand):
             return stats
         
         parser = self.parsers[ip_type_slug]
-        
-        # Загружаем CSV в DataFrame
         df = self.load_csv(catalogue)
         
         if df is None or df.empty:
@@ -1003,14 +964,12 @@ class Command(BaseCommand):
         
         self.stdout.write(f"  📊 Загружено записей: {len(df)}")
         
-        # Проверяем наличие обязательных колонок
         missing_columns = self.check_required_columns(df, parser.get_required_columns())
         if missing_columns:
             self.stdout.write(self.style.ERROR(f"  ❌ Отсутствуют обязательные колонки: {missing_columns}"))
             stats['errors'] += 1
             return stats
         
-        # Применяем фильтры
         if not self.skip_filters:
             df = self.apply_filters(df)
         
@@ -1021,12 +980,10 @@ class Command(BaseCommand):
         
         self.stdout.write(f"  📊 После фильтрации: {len(df)} записей")
         
-        # Ограничиваем количество строк для тестирования
         if self.max_rows and len(df) > self.max_rows:
             df = df.head(self.max_rows)
             self.stdout.write(self.style.WARNING(f"  ⚠️ Ограничено до {self.max_rows} записей для тестирования"))
         
-        # Запускаем парсер
         try:
             parser_stats = parser.parse_dataframe(df, catalogue)
             stats.update(parser_stats)
@@ -1038,7 +995,6 @@ class Command(BaseCommand):
         return stats
     
     def load_csv(self, catalogue):
-        """Загрузка CSV файла в DataFrame"""
         file_path = catalogue.catalogue_file.path
         
         if not os.path.exists(file_path):
@@ -1046,7 +1002,6 @@ class Command(BaseCommand):
             return None
         
         try:
-            # Пробуем разные стратегии загрузки
             strategies = [
                 {'encoding': self.encoding, 'delimiter': self.delimiter, 'skipinitialspace': True},
                 {'encoding': 'cp1251', 'delimiter': self.delimiter, 'skipinitialspace': True},
@@ -1060,7 +1015,6 @@ class Command(BaseCommand):
                     df = pd.read_csv(file_path, **strategy, dtype=str, keep_default_na=False)
                     self.stdout.write(f"  ✅ Успешно загружено с параметрами: {strategy}")
                     
-                    # Очищаем названия колонок от лишних символов
                     df.columns = [col.strip().strip('\ufeff').strip('"') for col in df.columns]
                     
                     return df
@@ -1074,19 +1028,15 @@ class Command(BaseCommand):
             return None
     
     def check_required_columns(self, df, required_columns):
-        """Проверка наличия обязательных колонок"""
         missing = [col for col in required_columns if col not in df.columns]
         return missing
     
     def apply_filters(self, df):
-        """Применение фильтров к DataFrame"""
         original_count = len(df)
         
-        # Фильтр по году регистрации
         if 'registration date' in df.columns:
             df = self.filter_by_registration_year(df)
         
-        # Фильтр по активности
         if self.only_active and 'actual' in df.columns:
             df = self.filter_by_actual(df)
         
@@ -1097,7 +1047,6 @@ class Command(BaseCommand):
         return df
     
     def filter_by_registration_year(self, df):
-        """Фильтрация по году регистрации"""
         def extract_year(date_str):
             try:
                 if pd.isna(date_str) or not date_str:
@@ -1107,14 +1056,12 @@ class Command(BaseCommand):
                 if not date_str:
                     return None
                 
-                # Пробуем разные форматы
                 for fmt in ['%Y%m%d', '%Y-%m-%d', '%d.%m.%Y', '%Y/%m/%d']:
                     try:
                         return datetime.strptime(date_str, fmt).year
                     except (ValueError, TypeError):
                         continue
                 
-                # Пробуем автоматическое определение
                 try:
                     return pd.to_datetime(date_str).year
                 except (ValueError, TypeError):
@@ -1125,7 +1072,6 @@ class Command(BaseCommand):
         self.stdout.write("  🔍 Фильтрация по году регистрации...")
         df['_year'] = df['registration date'].apply(extract_year)
         
-        # Статистика по годам
         years_dist = df['_year'].value_counts().sort_index()
         years_list = list(years_dist.items())
         if len(years_list) > 0:
@@ -1139,7 +1085,6 @@ class Command(BaseCommand):
         return filtered_df
     
     def filter_by_actual(self, df):
-        """Фильтрация по признаку actual = True"""
         def parse_actual(value):
             if pd.isna(value) or not value:
                 return False
@@ -1153,7 +1098,6 @@ class Command(BaseCommand):
         return filtered_df
     
     def print_final_stats(self, stats):
-        """Вывод итоговой статистики"""
         self.stdout.write(self.style.SUCCESS(f"\n{'='*60}"))
         self.stdout.write(self.style.SUCCESS("📊 ИТОГОВАЯ СТАТИСТИКА"))
         self.stdout.write(self.style.SUCCESS(f"{'='*60}"))
