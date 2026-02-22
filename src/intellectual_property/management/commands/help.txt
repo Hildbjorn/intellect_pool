@@ -12,6 +12,9 @@
 
 python manage.py pars_fips_catalogue --only-active --min-year 2020 --ip-type invention --dry-run
 
+# Тест для изобретений
+python manage.py pars_fips_catalogue --only-active --min-year 2020 --ip-type invention --max-rows 10
+
 ============
     HELP
 ============

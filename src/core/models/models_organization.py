@@ -317,8 +317,6 @@ class Organization(models.Model):
 
     def get_strategic_status_display(self):
         """Возвращает статус стратегического предприятия"""
-        if self.strategic_1009:
-            return "Стратегическое (1009-р)"
-        elif self.strategic:
+        if self.strategic:
             return "Стратегическое"
         return "Не стратегическое"

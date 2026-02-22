@@ -1,4 +1,3 @@
-# intellectual_property/management/commands/pars_fips_catalogue.py
 """
 Команда для парсинга каталогов открытых данных ФИПС Роспатента.
 Поддерживает все типы РИД: изобретения, полезные модели, промышленные образцы,
@@ -6,13 +5,15 @@
 """
 
 import logging
+import re
+from datetime import datetime
+
+from django.db import models
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
-from django.utils import timezone
+from django.utils.text import slugify
 from tqdm import tqdm
 import pandas as pd
 import os
-from datetime import datetime
 
 from intellectual_property.models import (
     FipsOpenDataCatalogue, IPType, ProtectionDocumentType,
@@ -138,16 +139,509 @@ class InventionParser(BaseFIPSParser):
     """Парсер для изобретений"""
     
     def get_ip_type(self):
+        """Получение типа РИД для изобретений"""
         return IPType.objects.filter(slug='invention').first()
     
     def get_required_columns(self):
+        """Обязательные колонки для работы парсера"""
         return ['registration number', 'invention name']
+    
+    def parse_authors(self, authors_str):
+        """Парсинг строки с авторами"""
+        if pd.isna(authors_str) or not authors_str:
+            return []
+        
+        authors_str = str(authors_str)
+        
+        # Разделяем по переводу строки или запятой
+        authors_list = re.split(r'[\n,]\s*', authors_str)
+        
+        result = []
+        for author in authors_list:
+            author = author.strip()
+            if not author or author == '""' or author == 'null':
+                continue
+            
+            # Убираем кавычки
+            author = author.strip('"')
+            
+            # Убираем код страны в скобках
+            author = re.sub(r'\s*\([A-Z]{2}\)', '', author)
+            
+            # Пытаемся разобрать ФИО
+            parts = author.split()
+            
+            if len(parts) >= 2:
+                last_name = parts[0]
+                first_name = parts[1] if len(parts) > 1 else ''
+                middle_name = parts[2] if len(parts) > 2 else ''
+                
+                # Обрабатываем инициалы
+                first_name = first_name.replace('.', '')
+                middle_name = middle_name.replace('.', '')
+                
+                result.append({
+                    'last_name': last_name,
+                    'first_name': first_name,
+                    'middle_name': middle_name,
+                })
+            else:
+                # Если не удалось разобрать, сохраняем как есть
+                result.append({
+                    'last_name': author,
+                    'first_name': '',
+                    'middle_name': '',
+                })
+        
+        return result
+    
+    def parse_patent_holders(self, holders_str):
+        """Парсинг строки с патентообладателями"""
+        if pd.isna(holders_str) or not holders_str:
+            return []
+        
+        holders_str = str(holders_str)
+        
+        # Разделяем организации (обычно разделены переводом строки)
+        holders_list = re.split(r'[\n]\s*', holders_str)
+        
+        result = []
+        for holder in holders_list:
+            holder = holder.strip().strip('"')
+            if not holder or holder == 'null' or holder == 'None':
+                continue
+            
+            # Убираем код страны в скобках
+            holder = re.sub(r'\s*\([A-Z]{2}\)', '', holder)
+            
+            result.append(holder)
+        
+        return result
+    
+    def find_or_create_person(self, person_data):
+        """Поиск или создание физического лица с кэшированием"""
+        # Создаем ключ для кэша
+        cache_key = f"{person_data['last_name']}|{person_data['first_name']}|{person_data['middle_name']}"
+        
+        if cache_key in self.person_cache:
+            return self.person_cache[cache_key]
+        
+        # Пытаемся найти по ФИО
+        persons = Person.objects.filter(
+            last_name=person_data['last_name'],
+            first_name=person_data['first_name']
+        )
+        
+        if person_data['middle_name']:
+            persons = persons.filter(middle_name=person_data['middle_name'])
+        
+        if persons.exists():
+            person = persons.first()
+            self.person_cache[cache_key] = person
+            return person
+        
+        # Создаем новое - нужно сгенерировать ceo_id
+        try:
+            # Находим максимальный существующий ID и увеличиваем на 1
+            max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
+            new_id = max_id + 1
+            
+            # Собираем полное ФИО
+            full_name_parts = [person_data['last_name'], person_data['first_name']]
+            if person_data['middle_name']:
+                full_name_parts.append(person_data['middle_name'])
+            full_name = ' '.join(full_name_parts)
+            
+            person = Person.objects.create(
+                ceo_id=new_id,
+                ceo=full_name,
+                last_name=person_data['last_name'],
+                first_name=person_data['first_name'],
+                middle_name=person_data['middle_name']
+            )
+            self.person_cache[cache_key] = person
+            return person
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"  Ошибка создания Person: {e}"))
+            return None
+        
+    def find_or_create_organization(self, org_name):
+        """Поиск или создание организации с кэшированием"""
+        if pd.isna(org_name) or not org_name:
+            return None
+        
+        org_name = str(org_name).strip()
+        org_name = org_name.strip('"')
+        
+        if not org_name or org_name == 'null' or org_name == 'None':
+            return None
+        
+        # Проверяем, не является ли это физическим лицом
+        # Паттерны для определения физлиц
+        person_patterns = [
+            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+$',  # Иванов Иван Иванович
+            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\.$',  # Иванов И.И.
+            r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+$',  # Иванов Иван
+        ]
+        
+        for pattern in person_patterns:
+            if re.match(pattern, org_name):
+                self.stdout.write(f"     ⚠️ Пропуск организации (похоже на физлицо): {org_name[:50]}...")
+                return None
+        
+        # Проверяем кэш
+        if org_name in self.organization_cache:
+            org = self.organization_cache[org_name]
+            if isinstance(org, Organization):
+                return org
+            return None
+        
+        # Генерируем slug из названия
+        base_slug = slugify(org_name[:50])
+        if not base_slug:
+            base_slug = 'organization'
+        
+        # Проверяем уникальность slug
+        unique_slug = base_slug
+        counter = 1
+        while Organization.objects.filter(slug=unique_slug).exists():
+            unique_slug = f"{base_slug}-{counter}"
+            counter += 1
+        
+        try:
+            # Находим максимальный существующий ID и увеличиваем на 1
+            from django.db.models import Max
+            max_id = Organization.objects.aggregate(Max('organization_id'))['organization_id__max'] or 0
+            new_id = max_id + 1
+            
+            org, created = Organization.objects.get_or_create(
+                name=org_name,
+                defaults={
+                    'organization_id': new_id,
+                    'name': org_name,
+                    'short_name': org_name[:100] if len(org_name) > 100 else org_name,
+                    'slug': unique_slug
+                }
+            )
+            
+            self.organization_cache[org_name] = org
+            return org
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"  Ошибка создания Organization '{org_name[:50]}...': {e}"))
+            return None
+    
+    def find_or_create_foiv(self, holder_text):
+        """
+        Поиск или создание ФОИВ из текста патентообладателя.
+        Обрабатывает случаи:
+        - "Минпромторг России"
+        - "Российская Федерация в лице Минпромторга России"
+        - "Федеральное агентство ..."
+        - "Министерство ..."
+        """
+        if pd.isna(holder_text) or not holder_text:
+            return None
+        
+        holder_text = str(holder_text).strip().strip('"')
+        
+        # Проверяем кэш
+        if holder_text in self.organization_cache:
+            org = self.organization_cache[holder_text]
+            if isinstance(org, FOIV):
+                return org
+            return None
+        
+        # Сначала пробуем извлечь из шаблона "РФ в лице"
+        foiv = self.extract_foiv_from_rf_template(holder_text)  # Теперь метод существует
+        if foiv:
+            self.organization_cache[holder_text] = foiv
+            return foiv
+        
+        # Паттерны для прямого поиска ФОИВ
+        try:
+            all_foivs = FOIV.objects.all()
+            for foiv in all_foivs:
+                # Проверяем, содержится ли краткое название ФОИВ в тексте
+                if foiv.short_name and foiv.short_name.lower() in holder_text.lower():
+                    self.organization_cache[holder_text] = foiv
+                    return foiv
+                
+                # Проверяем по частям (без "России")
+                short_without_russia = foiv.short_name.replace('России', '').strip()
+                if short_without_russia and short_without_russia.lower() in holder_text.lower():
+                    self.organization_cache[holder_text] = foiv
+                    return foiv
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"  Ошибка при поиске ФОИВ: {e}"))
+        
+        return None
+    
+    def extract_foiv_from_rf_template(self, holder_text):
+        """
+        Извлекает название ФОИВ из шаблона "Российская Федерация в лице ..."
+        """
+        patterns = [
+            r'Российская\s+Федерация\s+в\s+лице\s+(.+)',
+            r'РФ\s+в\s+лице\s+(.+)',
+            r'Министерство\s+(.+)',
+            r'Федеральное\s+(?:агентство|служба)\s+(.+)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, holder_text, re.IGNORECASE)
+            if match:
+                extracted = match.group(1).strip()
+                # Пробуем найти ФОИВ по извлеченному названию
+                try:
+                    foiv = FOIV.objects.filter(short_name__icontains=extracted).first()
+                    if foiv:
+                        return foiv
+                except:
+                    pass
+        
+        return None
+    
+    def process_authors(self, row, ip_object):
+        """Обработка авторов"""
+        authors_str = row.get('authors')
+        
+        if pd.isna(authors_str) or not authors_str:
+            self.stdout.write("     👥 Авторы: нет данных")
+            return
+        
+        try:
+            authors_data = self.parse_authors(authors_str)
+            
+            if authors_data:
+                self.stdout.write(f"     👥 Авторы: {len(authors_data)} чел.")
+                for author_data in authors_data:
+                    person = self.find_or_create_person(author_data)
+                    if person:
+                        ip_object.authors.add(person)
+            else:
+                self.stdout.write("     👥 Авторы: нет данных")
+            
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"  Ошибка обработки авторов: {e}"))
+    
+    def process_patent_holders(self, row, ip_object):
+        """Обработка патентообладателей (организации и ФОИВ)"""
+        holders_str = row.get('patent holders')
+        
+        if pd.isna(holders_str) or not holders_str:
+            self.stdout.write("     🏢 Патентообладатели: нет данных")
+            return
+        
+        try:
+            holders_list = self.parse_patent_holders(holders_str)
+            
+            if holders_list:
+                self.stdout.write(f"     🏢 Патентообладатели: {len(holders_list)}")
+                for holder_name in holders_list:
+                    # Сначала проверяем, не ФОИВ ли это
+                    foiv = self.find_or_create_foiv(holder_name)
+                    if foiv:
+                        ip_object.owner_foivs.add(foiv)
+                        self.stdout.write(f"        ФОИВ: {foiv.short_name}")
+                        continue
+                    
+                    # Если не ФОИВ, пробуем как организацию
+                    org = self.find_or_create_organization(holder_name)
+                    if org:
+                        ip_object.owner_organizations.add(org)
+                        self.stdout.write(f"        Организация: {org.name[:50]}...")
+            else:
+                self.stdout.write("     🏢 Патентообладатели: нет данных")
+            
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"  Ошибка обработки патентообладателей: {e}"))
+    
+    def process_correspondence_address(self, row, ip_object):
+        """Обработка адреса для переписки"""
+        address = row.get('correspondence address')
+        
+        if pd.isna(address) or not address:
+            return
+        
+        try:
+            if address and len(str(address)) > 10:
+                self.stdout.write(f"     📍 Адрес: {str(address)[:50]}...")
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"  Ошибка обработки адреса: {e}"))
+    
+    def process_row(self, row, catalogue, ip_type):
+        """Обработка одной строки данных"""
+        registration_number = self.clean_string(row.get('registration number'))
+        
+        if not registration_number:
+            return 'skipped'
+        
+        self.stdout.write(f"\n  📄 Обработка патента №{registration_number}")
+        
+        # Основные поля - только те, что есть в модели IPObject
+        name = self.clean_string(row.get('invention name'))
+        if not name:
+            name = f"Изобретение №{registration_number}"
+        
+        self.stdout.write(f"     Название: {name[:50]}...")
+        
+        # Даты (все эти поля есть в модели)
+        application_date = self.parse_date(row.get('application date'))
+        registration_date = self.parse_date(row.get('registration date'))
+        patent_starting_date = self.parse_date(row.get('patent starting date'))
+        expiration_date = self.parse_date(row.get('expiration date'))
+        
+        if application_date:
+            self.stdout.write(f"     Дата подачи: {application_date}")
+        if registration_date:
+            self.stdout.write(f"     Дата регистрации: {registration_date}")
+        
+        # Статус
+        actual = self.parse_bool(row.get('actual'))
+        self.stdout.write(f"     Статус: {'Активен' if actual else 'Не активен'}")
+        
+        # URL публикации
+        publication_url = self.clean_string(row.get('publication URL'))
+        
+        # Дополнительные текстовые поля, которые есть в модели
+        abstract = self.clean_string(row.get('abstract'))  # реферат
+        claims = self.clean_string(row.get('claims'))      # формула
+        
+        # Пытаемся извлечь год создания из дат
+        creation_year = None
+        if application_date:
+            creation_year = application_date.year
+        elif registration_date:
+            creation_year = registration_date.year
+        
+        # Проверяем, существует ли уже такой объект
+        try:
+            ip_object, created = IPObject.objects.get_or_create(
+                registration_number=registration_number,
+                ip_type=ip_type,
+                defaults={
+                    'name': name,
+                    'application_date': application_date,
+                    'registration_date': registration_date,
+                    'patent_starting_date': patent_starting_date,
+                    'expiration_date': expiration_date,
+                    'actual': actual,
+                    'publication_url': publication_url,
+                    'abstract': abstract,
+                    'claims': claims,
+                    'creation_year': creation_year,
+                }
+            )
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"  Ошибка создания IPObject {registration_number}: {e}"))
+            return 'skipped'
+        
+        if self.command.dry_run:
+            return 'created' if created else 'updated'
+        
+        # Если объект уже существует, обновляем поля
+        if not created:
+            update_fields = []
+            
+            if name and ip_object.name != name:
+                ip_object.name = name
+                update_fields.append('name')
+            
+            if application_date and ip_object.application_date != application_date:
+                ip_object.application_date = application_date
+                update_fields.append('application_date')
+            
+            if registration_date and ip_object.registration_date != registration_date:
+                ip_object.registration_date = registration_date
+                update_fields.append('registration_date')
+            
+            if patent_starting_date and ip_object.patent_starting_date != patent_starting_date:
+                ip_object.patent_starting_date = patent_starting_date
+                update_fields.append('patent_starting_date')
+            
+            if expiration_date and ip_object.expiration_date != expiration_date:
+                ip_object.expiration_date = expiration_date
+                update_fields.append('expiration_date')
+            
+            if ip_object.actual != actual:
+                ip_object.actual = actual
+                update_fields.append('actual')
+            
+            if publication_url and ip_object.publication_url != publication_url:
+                ip_object.publication_url = publication_url
+                update_fields.append('publication_url')
+            
+            if abstract and ip_object.abstract != abstract:
+                ip_object.abstract = abstract
+                update_fields.append('abstract')
+            
+            if claims and ip_object.claims != claims:
+                ip_object.claims = claims
+                update_fields.append('claims')
+            
+            if creation_year and ip_object.creation_year != creation_year:
+                ip_object.creation_year = creation_year
+                update_fields.append('creation_year')
+            
+            if update_fields:
+                ip_object.save(update_fields=update_fields)
+                self.stdout.write(f"     Обновлено полей: {len(update_fields)}")
+        
+        # Обрабатываем авторов (ManyToMany)
+        self.process_authors(row, ip_object)
+        
+        # Обрабатываем патентообладателей (разделяем на организации и ФОИВ)
+        self.process_patent_holders(row, ip_object)
+        
+        return 'created' if created else 'updated'
     
     def parse_dataframe(self, df, catalogue):
         """Парсинг DataFrame с изобретениями"""
-        self.stdout.write(self.style.SUCCESS("  Парсер изобретений готов к работе"))
-        # TODO: Реализовать логику парсинга
-        return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
+        self.stdout.write(self.style.SUCCESS("  🔄 Начинаем парсинг изобретений..."))
+        
+        stats = {
+            'processed': 0,
+            'created': 0,
+            'updated': 0,
+            'skipped': 0,
+            'errors': 0
+        }
+        
+        ip_type = self.get_ip_type()
+        if not ip_type:
+            self.stdout.write(self.style.ERROR("  ❌ Тип РИД 'invention' не найден в БД"))
+            stats['errors'] += 1
+            return stats
+        
+        # Обрабатываем записи с прогресс-баром
+        with tqdm(total=len(df), desc="  Обработка записей", unit=" зап") as pbar:
+            for idx, row in df.iterrows():
+                try:
+                    result = self.process_row(row, catalogue, ip_type)
+                    
+                    if result == 'created':
+                        stats['created'] += 1
+                    elif result == 'updated':
+                        stats['updated'] += 1
+                    elif result == 'skipped':
+                        stats['skipped'] += 1
+                    
+                    stats['processed'] += 1
+                    
+                except Exception as e:
+                    stats['errors'] += 1
+                    reg_num = row.get('registration number', 'N/A')
+                    self.stdout.write(self.style.ERROR(f"\n  ❌ Ошибка в записи {reg_num}: {e}"))
+                    logger.error(f"Error processing invention {reg_num}: {e}", exc_info=True)
+                
+                finally:
+                    pbar.update(1)
+        
+        self.stdout.write(self.style.SUCCESS(f"  ✅ Парсинг изобретений завершен"))
+        self.stdout.write(f"     Создано: {stats['created']}, Обновлено: {stats['updated']}, "
+                         f"Пропущено: {stats['skipped']}, Ошибок: {stats['errors']}")
+        
+        return stats
 
 
 class UtilityModelParser(BaseFIPSParser):
@@ -499,8 +993,6 @@ class Command(BaseCommand):
         """Фильтрация по году регистрации"""
         def extract_year(date_str):
             try:
-                # Используем парсер из базового класса через парсер
-                # Но так как мы в Command, используем прямой парсинг
                 if pd.isna(date_str) or not date_str:
                     return None
                 
