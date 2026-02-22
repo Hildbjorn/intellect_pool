@@ -9259,10 +9259,10 @@ textarea.form-control-lg {
     display: none !important; } }
 
 body {
-  font: 100% Roboto, sans-serif; }
+  font: 75% Roboto, sans-serif; }
   body h2,
   body .h2 {
-    font-size: 1.5rem;
+    font-size: 1rem;
     font-weight: 900; }
   body table {
     caption-side: unset; }
@@ -9271,7 +9271,7 @@ body {
     height: unset !important; }
 
 #changelist-filter {
-  font-size: 1rem !important; }
+  font-size: 0.75rem !important; }
 
 #result_list * {
   vertical-align: middle; }

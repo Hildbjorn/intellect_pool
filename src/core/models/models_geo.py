@@ -64,8 +64,11 @@ class District(models.Model):
         return f"{self.district} ({self.district_short})"
 
     def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.district)[:120]
+        if not self.slug and self.name:
+            self.slug = TextUtils.generate_slug(
+                self,
+                slug_field_name='slug'
+            )[:520]
         super().save(*args, **kwargs)
 
 
@@ -113,8 +116,11 @@ class Region(models.Model):
         return self.title
 
     def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.title)[:120]
+        if not self.slug and self.name:
+            self.slug = TextUtils.generate_slug(
+                self,
+                slug_field_name='slug'
+            )[:520]
         super().save(*args, **kwargs)
 
 
@@ -176,13 +182,11 @@ class City(models.Model):
         return f"{self.city}, {self.region.title}"
 
     def save(self, *args, **kwargs):
-        if not self.slug:
-            base_slug = slugify(f"{self.city}-{self.region_id}")
-            self.slug = TextUtils.unique_slugify(
-                City,
-                base_slug,
-                slug_field='slug'
-            )[:170]
+        if not self.slug and self.name:
+            self.slug = TextUtils.generate_slug(
+                self,
+                slug_field_name='slug'
+            )[:520]
         super().save(*args, **kwargs)
 
     def get_coordinates(self):

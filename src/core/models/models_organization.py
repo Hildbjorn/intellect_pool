@@ -297,10 +297,9 @@ class Organization(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug and self.name:
-            self.slug = TextUtils.unique_slugify(
-                Organization,
-                slugify(self.name)[:500],
-                slug_field='slug'
+            self.slug = TextUtils.generate_slug(
+                self,
+                slug_field_name='slug'
             )[:520]
         super().save(*args, **kwargs)
 

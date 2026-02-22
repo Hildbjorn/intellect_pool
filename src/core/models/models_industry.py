@@ -1,6 +1,8 @@
 from django.db import models
 from django.utils.text import slugify
 
+from common.utils.text import TextUtils
+
 
 class Industry(models.Model):
     """
@@ -39,6 +41,9 @@ class Industry(models.Model):
         return self.industry
 
     def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.industry)[:120]
+        if not self.slug and self.name:
+            self.slug = TextUtils.generate_slug(
+                self,
+                slug_field_name='slug'
+            )[:520]
         super().save(*args, **kwargs)

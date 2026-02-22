@@ -171,10 +171,9 @@ class Person(models.Model):
             else:
                 base = f"person-{self.ceo_id}"
             
-            self.slug = TextUtils.unique_slugify(
-                Person,
-                slugify(base)[:200],
-                slug_field='slug'
+            self.slug = TextUtils.generate_slug(
+                self,
+                slug_field_name='slug'
             )[:220]
 
         super().save(*args, **kwargs)

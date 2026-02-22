@@ -1488,7 +1488,7 @@ import re
 from uuid import uuid4
 from typing import Optional, Tuple, Any
 import pytils
-from slugify import slugify
+from django.utils.text import slugify
 
 
 class TextUtils:
