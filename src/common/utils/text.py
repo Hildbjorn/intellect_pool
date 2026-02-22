@@ -217,3 +217,228 @@ class TextUtils:
             truncated = truncated[:last_space]
         
         return truncated.rstrip() + suffix
+    
+    @staticmethod
+    def inflect_russian(text: str, case: str) -> str:
+        """
+        Склоняет слова и словосочетания по падежам русского языка.
+        
+        Args:
+            text: Исходный текст (слово или словосочетание)
+            case: Целевой падеж (nominative, genitive, dative, accusative, instrumental, prepositional)
+                или краткая форма: им, род, дат, вин, тв, пр
+        
+        Returns:
+            Склоненная форма слова или исходный текст, если склонение невозможно
+            
+        Raises:
+            ValueError: Если указан неизвестный падеж
+        """
+        if not text or not isinstance(text, str):
+            return text
+        
+        # Словарь падежей и их окончаний для разных типов слов
+        cases_map = {
+            'nominative': {'name': 'именительный', 'suffix': ''},
+            'genitive': {'name': 'родительный', 'suffix': ''},
+            'dative': {'name': 'дательный', 'suffix': ''},
+            'accusative': {'name': 'винительный', 'suffix': ''},
+            'instrumental': {'name': 'творительный', 'suffix': ''},
+            'prepositional': {'name': 'предложный', 'suffix': ''},
+            'им': 'nominative',
+            'род': 'genitive',
+            'дат': 'dative',
+            'вин': 'accusative',
+            'тв': 'instrumental',
+            'пр': 'prepositional'
+        }
+        
+        # Нормализуем название падежа
+        target_case = cases_map.get(case.lower(), case.lower())
+        if target_case not in cases_map and target_case not in ['nominative', 'genitive', 'dative', 'accusative', 'instrumental', 'prepositional']:
+            raise ValueError(f"Неизвестный падеж: {case}. Допустимые значения: nominative, genitive, dative, accusative, instrumental, prepositional или им, род, дат, вин, тв, пр")
+        
+        # Словарь окончаний для разных родов и чисел
+        endings = {
+            'masculine': {
+                'nominative': '',
+                'genitive': 'а',
+                'dative': 'у',
+                'accusative': '',
+                'instrumental': 'ом',
+                'prepositional': 'е'
+            },
+            'feminine': {
+                'nominative': '',
+                'genitive': 'ы',
+                'dative': 'е',
+                'accusative': 'у',
+                'instrumental': 'ой',
+                'prepositional': 'е'
+            },
+            'neuter': {
+                'nominative': '',
+                'genitive': 'а',
+                'dative': 'у',
+                'accusative': '',
+                'instrumental': 'ом',
+                'prepositional': 'е'
+            },
+            'plural': {
+                'nominative': 'ы',
+                'genitive': 'ов',
+                'dative': 'ам',
+                'accusative': 'ы',
+                'instrumental': 'ами',
+                'prepositional': 'ах'
+            }
+        }
+        
+        # Слова-исключения
+        exceptions = {
+            'человек': {
+                'genitive': 'человека',
+                'dative': 'человеку',
+                'accusative': 'человека',
+                'instrumental': 'человеком',
+                'prepositional': 'человеке'
+            },
+            'ребенок': {
+                'genitive': 'ребенка',
+                'dative': 'ребенку',
+                'accusative': 'ребенка',
+                'instrumental': 'ребенком',
+                'prepositional': 'ребенке'
+            },
+            'год': {
+                'genitive': 'года',
+                'dative': 'году',
+                'accusative': 'год',
+                'instrumental': 'годом',
+                'prepositional': 'годе'
+            },
+            'день': {
+                'genitive': 'дня',
+                'dative': 'дню',
+                'accusative': 'день',
+                'instrumental': 'днем',
+                'prepositional': 'дне'
+            },
+            'ночь': {
+                'genitive': 'ночи',
+                'dative': 'ночи',
+                'accusative': 'ночь',
+                'instrumental': 'ночью',
+                'prepositional': 'ночи'
+            },
+            'мать': {
+                'genitive': 'матери',
+                'dative': 'матери',
+                'accusative': 'мать',
+                'instrumental': 'матерью',
+                'prepositional': 'матери'
+            },
+            'отец': {
+                'genitive': 'отца',
+                'dative': 'отцу',
+                'accusative': 'отца',
+                'instrumental': 'отцом',
+                'prepositional': 'отце'
+            }
+        }
+        
+        # Определяем пол слова по окончанию
+        def detect_gender(word):
+            word = word.lower().strip()
+            
+            # Проверяем исключения
+            if word in exceptions:
+                return word
+            
+            # Определяем род по окончанию
+            if word.endswith(('а', 'я')):
+                return 'feminine'
+            elif word.endswith(('о', 'е', 'ё')):
+                return 'neuter'
+            elif word.endswith(('ь')):
+                # Слова на -ь могут быть мужского или женского рода
+                feminine_ending_soft = ['сть', 'знь', 'вль', 'бль', 'пль', 'мль', 'фль']
+                if any(word.endswith(ending) for ending in feminine_ending_soft):
+                    return 'feminine'
+                return 'masculine'
+            else:
+                return 'masculine'
+        
+        # Склоняем слово по падежу
+        def inflect_word(word, target_case):
+            if not word:
+                return word
+            
+            # Проверяем исключения для всего слова
+            word_lower = word.lower()
+            if word_lower in exceptions:
+                if target_case in exceptions[word_lower]:
+                    # Сохраняем оригинальный регистр первой буквы
+                    result = exceptions[word_lower][target_case]
+                    if word[0].isupper():
+                        result = result.capitalize()
+                    return result
+            
+            # Проверяем исключения для частей слова (например, "пол-")
+            parts = word.split('-')
+            if len(parts) > 1:
+                inflected_parts = [inflect_word(part, target_case) for part in parts]
+                return '-'.join(inflected_parts)
+            
+            gender = detect_gender(word)
+            
+            # Особые случаи для винительного падежа (одушевленность)
+            if target_case == 'accusative':
+                # Для мужского рода одушевленных предметов винительный совпадает с родительным
+                if gender == 'masculine' and not word.endswith(('метр', 'грамм', 'литр')):
+                    return inflect_word(word, 'genitive')
+            
+            # Получаем основу слова (убираем окончание)
+            if gender == 'masculine':
+                if word.endswith(('й', 'ь')):
+                    stem = word[:-1]
+                else:
+                    stem = word
+            elif gender == 'feminine':
+                if word.endswith(('а', 'я')):
+                    stem = word[:-1]
+                elif word.endswith('ь'):
+                    stem = word[:-1]
+                else:
+                    stem = word
+            elif gender == 'neuter':
+                if word.endswith(('о', 'е', 'ё')):
+                    stem = word[:-1]
+                else:
+                    stem = word
+            else:
+                stem = word
+            
+            # Добавляем окончание для нужного падежа
+            if isinstance(gender, str) and gender in endings:
+                ending = endings[gender].get(target_case, '')
+                if ending:
+                    return stem + ending
+            
+            return word
+        
+        # Склоняем словосочетание целиком
+        words = text.split()
+        if len(words) == 1:
+            return inflect_word(text, target_case)
+        
+        # Для словосочетаний склоняем все слова
+        inflected_words = []
+        for i, word in enumerate(words):
+            # Не склоняем предлоги и союзы
+            if word.lower() in ['в', 'на', 'с', 'о', 'об', 'про', 'без', 'для', 'до', 'из', 'к', 'у']:
+                inflected_words.append(word)
+            else:
+                inflected_words.append(inflect_word(word, target_case))
+        
+        return ' '.join(inflected_words)
