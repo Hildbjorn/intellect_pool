@@ -818,14 +818,19 @@ const setupAjaxForms = () => {
  */
 const setupFormSubmitHandlers = () => {
     const submitButtons = document.querySelectorAll(".btn_submit");
-    const forms = document.querySelectorAll("form");
 
     if (!submitButtons.length) return;
 
     submitButtons.forEach(button => {
-        button.addEventListener("click", () => {
-            const hasErrors = Array.from(forms).some(form => !form.checkValidity());
-            if (!hasErrors) {
+        button.addEventListener("click", (e) => {
+            const form = button.closest('form');
+            if (!form) return;
+
+            // Проверяем, есть ли у формы hx-indicator
+            const hasHxIndicator = form.hasAttribute('hx-indicator');
+
+            // Включаем спиннер ТОЛЬКО если это не HTMX форма с индикатором
+            if (!hasHxIndicator && form.checkValidity()) {
                 toggleSpinner(true);
             }
         });
@@ -980,6 +985,15 @@ const setupHTMXContentHandlers = () => {
             setupProjectCoverPreview();
             initializeOrganizationAutocomplete();
         }
+    });
+
+    // Дополнительно: обрабатываем ошибки запросов
+    document.addEventListener('htmx:responseError', () => {
+        toggleSpinner(false);
+    });
+
+    document.addEventListener('htmx:sendError', () => {
+        toggleSpinner(false);
     });
 };
 

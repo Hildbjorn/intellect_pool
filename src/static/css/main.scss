@@ -112,6 +112,7 @@ html {
         }
 
         #spinner_modal {
+            display: none;
             position: absolute;
             flex-direction: column;
             justify-content: center;
@@ -120,6 +121,10 @@ html {
             height: 100%;
             opacity: 50%;
             z-index: 1050;
+        }
+
+        #spinner_modal.htmx-request {
+            display: flex !important;
         }
 
         .htmx-indicator {

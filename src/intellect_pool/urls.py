@@ -33,4 +33,4 @@ urlpatterns += [
 ]
 
 # обработчик ошибки 404
-handler404 = "core.views.src/views_page_not_found.page_not_found_view"
+handler404 = "core.views.views_page_not_found.page_not_found_view"
