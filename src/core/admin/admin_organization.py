@@ -11,11 +11,6 @@ class ActivityTypeAdmin(AdminDisplayMixin, admin.ModelAdmin):
     """
     Админ-панель для типов деятельности
     """
-    list_display = [
-        'activity_type', 
-        'organizations_count', 
-        'created_at_display'
-    ]
     search_fields = ['activity_type']
     readonly_fields = ['created_at', 'updated_at', 'organizations_count']
     fieldsets = (
@@ -32,6 +27,10 @@ class ActivityTypeAdmin(AdminDisplayMixin, admin.ModelAdmin):
         })
     )
 
+    def get_list_display(self, request):
+        """Переопределяем, чтобы убрать автоматически добавленные поля из миксина"""
+        return ['activity_type', 'organizations_count', 'created_at_display']
+    
     def get_queryset(self, request):
         """Оптимизация запросов с подсчетом организаций"""
         return super().get_queryset(request).annotate(
@@ -56,11 +55,6 @@ class CeoPositionAdmin(AdminDisplayMixin, admin.ModelAdmin):
     """
     Админ-панель для должностей руководителей
     """
-    list_display = [
-        'ceo_position', 
-        'organizations_count', 
-        'created_at_display'
-    ]
     search_fields = ['ceo_position']
     readonly_fields = ['created_at', 'updated_at', 'organizations_count']
     fieldsets = (
@@ -105,15 +99,6 @@ class OrganizationAdmin(AdminDisplayMixin, admin.ModelAdmin):
     """
     Админ-панель для организаций (основная модель)
     """
-    list_display = [
-        'short_name',
-        'city_info',
-        'industry_info',
-        'ceo_info',
-        'strategic_badge',
-        'register_opk_badge',
-    ]
-    
     list_filter = [
         'industry',
         'activity_type',

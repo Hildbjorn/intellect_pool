@@ -11,12 +11,6 @@ class IndustryAdmin(AdminDisplayMixin, admin.ModelAdmin):
     """
     Админ-панель для отраслей промышленности
     """
-    list_display = [
-        'industry', 
-        'organizations_count', 
-        'created_at_display',
-        'updated_at_display'
-    ]
     search_fields = ['industry']
     readonly_fields = ['slug', 'created_at', 'updated_at', 'organizations_count']
     fieldsets = (

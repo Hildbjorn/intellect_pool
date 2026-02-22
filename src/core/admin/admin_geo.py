@@ -9,7 +9,6 @@ class DistrictAdmin(AdminDisplayMixin, admin.ModelAdmin):
     """
     Админ-панель для федеральных округов
     """
-    list_display = ['district', 'district_short', 'regions_count', 'created_at_display']
     search_fields = ['district', 'district_short']
     readonly_fields = ['slug', 'created_at', 'updated_at']
     
@@ -40,7 +39,6 @@ class RegionAdmin(AdminDisplayMixin, admin.ModelAdmin):
     """
     Админ-панель для регионов
     """
-    list_display = ['title', 'district', 'cities_count', 'created_at_display']
     list_filter = ['district']
     search_fields = ['title']
     autocomplete_fields = ['district']
@@ -73,7 +71,6 @@ class CityAdmin(AdminDisplayMixin, admin.ModelAdmin):
     """
     Админ-панель для городов
     """
-    list_display = ['city', 'region', 'coordinates_display', 'created_at_display']
     list_filter = ['region', 'region__district']
     search_fields = ['city']
     autocomplete_fields = ['region']
