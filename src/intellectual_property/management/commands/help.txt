@@ -11,3 +11,40 @@
 --ip-type database — базы данных
 
 python manage.py pars_fips_catalogue --only-active --min-year 2020 --ip-type invention --dry-run
+
+============
+    HELP
+============
+
+usage: manage.py pars_fips_catalogue [-h] [--catalogue-id CATALOGUE_ID] [--ip-type {invention,utility-model,industrial-design,integrated-circuit-topology,computer-program,database}] [--dry-run] [--encoding ENCODING]
+                                     [--delimiter DELIMITER] [--batch-size BATCH_SIZE] [--min-year MIN_YEAR] [--skip-filters] [--only-active] [--max-rows MAX_ROWS] [--version] [-v {0,1,2,3}] [--settings SETTINGS]      
+                                     [--pythonpath PYTHONPATH] [--traceback] [--no-color] [--force-color] [--skip-checks]
+
+Парсинг каталогов открытых данных ФИПС Роспатента
+
+options:
+  -h, --help            show this help message and exit
+  --catalogue-id CATALOGUE_ID
+                        ID конкретного каталога для парсинга
+  --ip-type {invention,utility-model,industrial-design,integrated-circuit-topology,computer-program,database}
+                        Тип РИД для парсинга (если не указан, парсятся все)
+  --dry-run             Режим проверки без сохранения в БД
+  --encoding ENCODING   Кодировка CSV файла
+  --delimiter DELIMITER
+                        Разделитель в CSV файле
+  --batch-size BATCH_SIZE
+                        Размер пакета для bulk-операций
+  --min-year MIN_YEAR   Минимальный год регистрации для фильтрации
+  --skip-filters        Пропустить фильтрацию (обработать все записи)
+  --only-active         Парсить только активные патенты (actual = True)
+  --max-rows MAX_ROWS   Максимальное количество строк для обработки (для тестирования)
+  --version             Show program's version number and exit.
+  -v, --verbosity {0,1,2,3}
+                        Verbosity level; 0=minimal output, 1=normal output, 2=verbose output, 3=very verbose output
+  --settings SETTINGS   The Python path to a settings module, e.g. "myproject.settings.main". If this isn't provided, the DJANGO_SETTINGS_MODULE environment variable will be used.
+  --pythonpath PYTHONPATH
+                        A directory to add to the Python path, e.g. "/home/djangoprojects/myproject".
+  --traceback           Display a full stack trace on CommandError exceptions.
+  --no-color            Don't colorize the command output.
+  --force-color         Force colorization of the command output.
+  --skip-checks         Skip system checks.
