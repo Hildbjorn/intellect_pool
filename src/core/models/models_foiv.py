@@ -1,3 +1,5 @@
+import re
+
 from django.db import models
 from django.utils.text import slugify
 from core.models.models_geo import City
@@ -239,3 +241,84 @@ class FOIV(models.Model):
             hierarchy.append(str(current))
             current = current.parent_foiv
         return " → ".join(reversed(hierarchy))
+    
+
+class RFRepresentative(models.Model):
+    """
+    Представительство Российской Федерации в лице ФОИВ
+    Например: "Российская Федерация, от имени которой выступает Министерство промышленности и торговли Российской Федерации"
+    """
+    rf_representative_id = models.PositiveIntegerField(
+        primary_key=True,
+        verbose_name='ID представительства'
+    )
+    
+    foiv = models.ForeignKey(
+        FOIV,
+        on_delete=models.CASCADE,
+        related_name='rf_representatives',
+        verbose_name='ФОИВ',
+        db_index=True
+    )
+    
+    # Полная строка как в исходных данных
+    full_text = models.TextField(
+        unique=True,
+        verbose_name='Полный текст',
+        help_text='Полная строка из каталога (например: "Российская Федерация, от имени которой выступает Минпромторг России")',
+        db_index=True
+    )
+    
+    # Варианты написания для поиска
+    search_text = models.TextField(
+        verbose_name='Текст для поиска',
+        help_text='Нормализованный текст для поиска (без кавычек, лишних пробелов)',
+        db_index=True
+    )
+    
+    # Сокращенный вариант для отображения
+    display_name = models.CharField(
+        max_length=500,
+        verbose_name='Отображаемое название',
+        help_text='Краткое название для отображения'
+    )
+    
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Дата создания'
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name='Дата обновления'
+    )
+    
+    class Meta:
+        verbose_name = 'Представительство РФ'
+        verbose_name_plural = 'Представительства РФ'
+        ordering = ['foiv__short_name']
+        indexes = [
+            models.Index(fields=['search_text']),
+            models.Index(fields=['full_text']),
+        ]
+    
+    def __str__(self):
+        return self.display_name or f"РФ в лице {self.foiv.short_name}"
+    
+    def save(self, *args, **kwargs):
+        if not self.search_text and self.full_text:
+            # Нормализуем текст для поиска
+            self.search_text = self.normalize_text(self.full_text)
+        if not self.display_name and self.foiv:
+            self.display_name = f"РФ в лице {self.foiv.short_name}"
+        super().save(*args, **kwargs)
+    
+    @staticmethod
+    def normalize_text(text):
+        """Нормализация текста для поиска"""
+        if not text:
+            return text
+        # Приводим к нижнему регистру, убираем лишние пробелы
+        text = ' '.join(text.lower().split())
+        # Убираем кавычки и скобки
+        text = re.sub(r'["\'\(\)]', '', text)
+        return text

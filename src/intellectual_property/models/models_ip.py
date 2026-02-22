@@ -1,6 +1,6 @@
 from django.db import models
 from common.utils.text import TextUtils
-from core.models.models_foiv import FOIV
+from core.models.models_foiv import FOIV, RFRepresentative
 from core.models.models_geo import Country
 from core.models.models_it import DBMS, OperatingSystem, ProgrammingLanguage
 from core.models.models_organization import Organization
@@ -223,9 +223,9 @@ class IPObject(models.Model):
     )
     
     owner_foivs = models.ManyToManyField(
-        FOIV,
+        RFRepresentative,
         related_name='owned_ip_objects_foiv',
-        verbose_name='Правообладатели (ФОИВ)',
+        verbose_name='Правообладатели от РФ (ФОИВ)',
         blank=True
     )
     owner_organizations = models.ManyToManyField(

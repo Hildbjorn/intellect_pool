@@ -20,7 +20,7 @@ from intellectual_property.models import (
     FipsOpenDataCatalogue, IPType, ProtectionDocumentType,
     IPObject, AdditionalPatent, IPImage
 )
-from core.models import City, Region, District, Person, Organization, FOIV, Country
+from core.models import City, Region, District, Person, Organization, FOIV, Country, RFRepresentative
 from common.utils.text import TextUtils
 from common.utils.dates import DateUtils
 
@@ -29,17 +29,22 @@ logger = logging.getLogger(__name__)
 
 class EntityTypeDetector:
     """
-    Детектор типов сущностей (ФОИВ, организация, физлицо)
+    Детектор типов сущностей (представительство РФ, ФОИВ, организация, физлицо)
     Вынесен в отдельный класс для переиспользования
     """
+    
+    # Паттерны для представительств РФ
+    RF_PATTERNS = [
+        r'Российская\s+Федерация',
+        r'РФ',
+        r'Российской\s+Федерации',
+    ]
     
     # Признаки ФОИВ/госструктур
     GOV_INDICATORS = [
         'Министерство',
         'Федеральное агентство',
         'Федеральная служба',
-        'Российская Федерация',
-        'РФ',
         'Госкорпорация',
         'Государственная корпорация',
         'Росатом',
@@ -107,6 +112,14 @@ class EntityTypeDetector:
     ]
     
     @classmethod
+    def is_rf_representation(cls, text: str) -> bool:
+        """Проверка, является ли текст представительством РФ"""
+        if not text:
+            return False
+        text_lower = text.lower()
+        return any(re.search(pattern, text_lower, re.IGNORECASE) for pattern in cls.RF_PATTERNS)
+    
+    @classmethod
     def is_foiv(cls, text: str) -> bool:
         """Проверка, является ли текст ФОИВ/госструктурой"""
         if not text:
@@ -143,7 +156,7 @@ class EntityTypeDetector:
             return False
         
         # Если есть признаки организации или ФОИВ - не физлицо
-        if cls.is_organization(text) or cls.is_foiv(text):
+        if cls.is_organization(text) or cls.is_foiv(text) or cls.is_rf_representation(text):
             return False
         
         text = text.strip()
@@ -176,9 +189,11 @@ class EntityTypeDetector:
     def detect_type(cls, text: str) -> str:
         """
         Определение типа сущности
-        Возвращает: 'foiv', 'organization', 'person', 'unknown'
+        Возвращает: 'rf_representation', 'foiv', 'organization', 'person', 'unknown'
         """
-        if cls.is_foiv(text):
+        if cls.is_rf_representation(text):
+            return 'rf_representation'
+        elif cls.is_foiv(text):
             return 'foiv'
         elif cls.is_organization(text):
             return 'organization'
@@ -204,6 +219,7 @@ class BaseFIPSParser:
         self.person_cache = {}
         self.organization_cache = {}
         self.foiv_cache = {}
+        self.rf_rep_cache = {}
         self.city_cache = {}
         
         # Детектор типов
@@ -284,6 +300,16 @@ class BaseFIPSParser:
                     normalized_parts.append(part[0].upper() + part[1:].lower())
         
         return ' '.join(normalized_parts)
+    
+    def normalize_text(self, text):
+        """Нормализация текста для поиска"""
+        if not text:
+            return text
+        # Приводим к нижнему регистру, убираем лишние пробелы
+        text = ' '.join(text.lower().split())
+        # Убираем кавычки и скобки
+        text = re.sub(r'["\'\(\)]', '', text)
+        return text
     
     def get_or_create_country(self, code):
         """Получение или создание страны по коду"""
@@ -545,10 +571,57 @@ class BaseFIPSParser:
         
         return None
     
+    def find_or_create_rf_representative(self, holder_text, foiv=None):
+        """
+        Поиск или создание представительства РФ
+        Если передан foiv - создаем новую связь
+        Если не передан - ищем по тексту
+        """
+        if pd.isna(holder_text) or not holder_text:
+            return None
+        
+        holder_text = str(holder_text).strip().strip('"')
+        normalized = self.normalize_text(holder_text)
+        
+        # Проверяем кэш
+        cache_key = f"{holder_text}|{foiv.pk if foiv else ''}"
+        if cache_key in self.rf_rep_cache:
+            return self.rf_rep_cache[cache_key]
+        
+        try:
+            # Сначала точный поиск по полному тексту
+            rf_rep = RFRepresentative.objects.filter(full_text=holder_text).first()
+            if rf_rep:
+                self.rf_rep_cache[cache_key] = rf_rep.foiv
+                return rf_rep.foiv
+            
+            # Поиск по нормализованному тексту
+            rf_rep = RFRepresentative.objects.filter(search_text__icontains=normalized[:100]).first()
+            if rf_rep:
+                self.rf_rep_cache[cache_key] = rf_rep.foiv
+                return rf_rep.foiv
+            
+            # Если передан foiv, создаем новое представительство
+            if foiv:
+                max_id = RFRepresentative.objects.aggregate(models.Max('rf_representative_id'))['rf_representative_id__max'] or 0
+                rf_rep = RFRepresentative.objects.create(
+                    rf_representative_id=max_id + 1,
+                    foiv=foiv,
+                    full_text=holder_text,
+                    display_name=f"РФ в лице {foiv.short_name}"
+                )
+                self.rf_rep_cache[cache_key] = foiv
+                return foiv
+                
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"  Ошибка поиска представительства РФ: {e}"))
+        
+        return None
+    
     def process_entity(self, entity_name, ip_object, entity_type=None):
         """
         Универсальный метод обработки сущности
-        entity_type может быть 'foiv', 'organization', 'person', None (auto-detect)
+        entity_type может быть 'rf_representation', 'foiv', 'organization', 'person', None (auto-detect)
         """
         if pd.isna(entity_name) or not entity_name:
             return False
@@ -558,7 +631,21 @@ class BaseFIPSParser:
         
         self.stdout.write(f"           Определен тип: {entity_type}")
         
-        if entity_type == 'foiv':
+        if entity_type == 'rf_representation':
+            # Сначала пробуем найти ФОИВ в тексте
+            foiv = self.find_or_create_foiv(entity_name)
+            if foiv:
+                # Создаем или получаем представительство РФ
+                rf_foiv = self.find_or_create_rf_representative(entity_name, foiv)
+                if rf_foiv:
+                    ip_object.owner_foivs.add(rf_foiv)
+                    self.stdout.write(f"        ✅ РФ в лице: {foiv.short_name}")
+                    return True
+            else:
+                self.stdout.write(f"        ⚠️ ФОИВ не найден для представительства РФ")
+                return False
+        
+        elif entity_type == 'foiv':
             foiv = self.find_or_create_foiv(entity_name)
             if foiv:
                 ip_object.owner_foivs.add(foiv)
@@ -788,8 +875,9 @@ class InventionParser(BaseFIPSParser):
         return stats
 
 
-# Остальные парсеры будут использовать те же методы из BaseFIPSParser
 class UtilityModelParser(BaseFIPSParser):
+    """Парсер для полезных моделей"""
+    
     def get_ip_type(self):
         return IPType.objects.filter(slug='utility-model').first()
     
@@ -798,10 +886,13 @@ class UtilityModelParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер полезных моделей готов к работе"))
+        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
 class IndustrialDesignParser(BaseFIPSParser):
+    """Парсер для промышленных образцов"""
+    
     def get_ip_type(self):
         return IPType.objects.filter(slug='industrial-design').first()
     
@@ -810,10 +901,13 @@ class IndustrialDesignParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер промышленных образцов готов к работе"))
+        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
 class IntegratedCircuitTopologyParser(BaseFIPSParser):
+    """Парсер для топологий интегральных микросхем"""
+    
     def get_ip_type(self):
         return IPType.objects.filter(slug='integrated-circuit-topology').first()
     
@@ -822,10 +916,13 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер топологий микросхем готов к работе"))
+        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
 class ComputerProgramParser(BaseFIPSParser):
+    """Парсер для программ для ЭВМ"""
+    
     def get_ip_type(self):
         return IPType.objects.filter(slug='computer-program').first()
     
@@ -834,10 +931,13 @@ class ComputerProgramParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер программ для ЭВМ готов к работе"))
+        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
 class DatabaseParser(BaseFIPSParser):
+    """Парсер для баз данных"""
+    
     def get_ip_type(self):
         return IPType.objects.filter(slug='database').first()
     
@@ -846,6 +946,7 @@ class DatabaseParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер баз данных готов к работе"))
+        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
