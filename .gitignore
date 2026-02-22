@@ -4,6 +4,13 @@
 *.pyc
 __pycache__
 
+# DataBase
+# **/*.sqlite3
+
+# Catalogues
+src/media/ip_catalogue
+src/media/ip_catalogue/
+
 # Backup files #
 *.bak
 

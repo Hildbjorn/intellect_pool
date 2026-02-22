@@ -1,0 +1,4 @@
+# Загружаем в правильном порядке
+python manage.py loaddata programming_language.json
+python manage.py loaddata dbms.json
+python manage.py loaddata operating_system.json

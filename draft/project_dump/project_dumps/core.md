@@ -72,8 +72,26 @@ admin.site.enable_nav_sidebar = True  # Включаем боковую нави
 ```
 from django.contrib import admin
 from django.utils.html import format_html
-from core.models.models_geo import District, Region, City
+from core.models.models_geo import Country, District, Region, City
 from common.admin_utils import AdminDisplayMixin
+
+
+@admin.register(Country)
+class CountryAdmin(AdminDisplayMixin, admin.ModelAdmin):
+    """
+    Админ-панель для стран (ISO 3166)
+    """
+    search_fields = ['name', 'name_en', 'code', 'code_alpha3']
+    
+    fieldsets = (
+        ('Основная информация', {
+            'fields': ('name', 'name_en', 'code', 'code_alpha3')
+        }),
+    )
+
+    def get_list_display(self, request):
+        """Переопределяем, чтобы убрать автоматически добавленные поля из миксина"""
+        return ['name', 'code', 'code_alpha3', 'name_en']
 
 
 @admin.register(District)
@@ -237,6 +255,77 @@ class IndustryAdmin(AdminDisplayMixin, admin.ModelAdmin):
         return format_html('<span style="color: #999;">0 предприятий</span>')
     organizations_count.short_description = 'Организации'
     organizations_count.admin_order_field = 'org_count'
+```
+
+
+-----
+
+# Файл: admin\admin_it.py
+
+```
+from django.contrib import admin
+from core.models.models_it import ProgrammingLanguage, DBMS, OperatingSystem
+from common.admin_utils import AdminDisplayMixin
+
+
+@admin.register(ProgrammingLanguage)
+class ProgrammingLanguageAdmin(AdminDisplayMixin, admin.ModelAdmin):
+    """
+    Админ-панель для языков программирования
+    """
+    list_display = ['name', 'id']
+    search_fields = ['name']
+    readonly_fields = ['id']
+    
+    fieldsets = (
+        ('Основная информация', {
+            'fields': ('name',)
+        }),
+    )
+
+    def get_list_display(self, request):
+        """Переопределяем, чтобы убрать автоматически добавленные поля из миксина"""
+        return ['name', 'id']
+
+
+@admin.register(DBMS)
+class DBMSAdmin(AdminDisplayMixin, admin.ModelAdmin):
+    """
+    Админ-панель для систем управления базами данных
+    """
+    list_display = ['name', 'id']
+    search_fields = ['name']
+    readonly_fields = ['id']
+    
+    fieldsets = (
+        ('Основная информация', {
+            'fields': ('name',)
+        }),
+    )
+
+    def get_list_display(self, request):
+        """Переопределяем, чтобы убрать автоматически добавленные поля из миксина"""
+        return ['name', 'id']
+
+
+@admin.register(OperatingSystem)
+class OperatingSystemAdmin(AdminDisplayMixin, admin.ModelAdmin):
+    """
+    Админ-панель для операционных систем
+    """
+    list_display = ['name', 'id']
+    search_fields = ['name']
+    readonly_fields = ['id']
+    
+    fieldsets = (
+        ('Основная информация', {
+            'fields': ('name',)
+        }),
+    )
+
+    def get_list_display(self, request):
+        """Переопределяем, чтобы убрать автоматически добавленные поля из миксина"""
+        return ['name', 'id']
 ```
 
 
@@ -743,6 +832,24 @@ from django.utils.text import slugify
 from common.utils import TextUtils
 
 
+class Country(models.Model):
+    """
+    Справочник стран (ISO 3166)
+    """
+    name = models.CharField('Название страны', max_length=100)
+    name_en = models.CharField('Название на английском', max_length=100, blank=True)
+    code = models.CharField('Код (двухбуквенный)', max_length=2, unique=True)
+    code_alpha3 = models.CharField('Код (трехбуквенный)', max_length=3, blank=True)
+
+    class Meta:
+        verbose_name = 'Страна'
+        verbose_name_plural = 'Страны'
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.name} ({self.code})'
+
+
 class District(models.Model):
     """
     Федеральный округ
@@ -964,6 +1071,59 @@ class Industry(models.Model):
         if not self.slug:
             self.slug = slugify(self.industry)[:120]
         super().save(*args, **kwargs)
+```
+
+
+-----
+
+# Файл: models\models_it.py
+
+```
+from django.db import models
+
+class ProgrammingLanguage(models.Model):
+    """
+    Языки программирования
+    """
+    name = models.CharField('Название языка', max_length=50, unique=True)
+
+    class Meta:
+        verbose_name = 'Язык программирования'
+        verbose_name_plural = 'Языки программирования'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class DBMS(models.Model):
+    """
+    Системы управления базами данных
+    """
+    name = models.CharField('Название СУБД', max_length=50, unique=True)
+
+    class Meta:
+        verbose_name = 'СУБД'
+        verbose_name_plural = 'СУБД'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class OperatingSystem(models.Model):
+    """
+    Операционные системы
+    """
+    name = models.CharField('Название ОС', max_length=50, unique=True)
+
+    class Meta:
+        verbose_name = 'Операционная система'
+        verbose_name_plural = 'Операционные системы'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
 ```
 
 
