@@ -133,7 +133,8 @@ class OrganizationAdmin(AdminDisplayMixin, admin.ModelAdmin):
         'created_at',
         'updated_at',
         'hierarchy_display',
-        'get_full_address'
+        'get_full_address',
+        'checko_link_display'  # Добавляем в readonly_fields для детальной страницы
     ]
     
     fieldsets = (
@@ -150,7 +151,8 @@ class OrganizationAdmin(AdminDisplayMixin, admin.ModelAdmin):
                 ('okpo', 'ogrn'),
                 ('inn', 'kpp'),
                 'okato',
-                'gisp_catalogue_id'
+                'gisp_catalogue_id',
+                'checko_link_display'  # Добавляем ссылку на Чекко в этот блок
             ),
             'classes': ('wide',)
         }),
@@ -205,7 +207,8 @@ class OrganizationAdmin(AdminDisplayMixin, admin.ModelAdmin):
 
     def get_list_display(self, request):
         """Переопределяем, чтобы убрать автоматически добавленные поля из миксина"""
-        return ['short_name', 'city_info', 'industry_info', 'ceo_info', 'strategic_badge', 'register_opk_badge']
+        return ['short_name', 'city_info', 'industry_info', 'ceo_info', 
+                'strategic_badge', 'register_opk_badge', 'checko_link']  # Добавляем ссылку на Чекко
     
     def get_queryset(self, request):
         """Оптимизация запросов с select_related"""
@@ -312,6 +315,28 @@ class OrganizationAdmin(AdminDisplayMixin, admin.ModelAdmin):
         return '-'
     get_full_address.short_description = 'Полный адрес'
 
+    def checko_link(self, obj):
+        """Создает ссылку на страницу организации на портале Чекко"""
+        if obj.ogrn:
+            url = f"https://checko.ru/company/{obj.ogrn}"
+            return format_html(
+                '<a href="{}" target="_blank" style="display: inline-block; background-color: #007bff; color: #fff; padding: 3px 8px; border-radius: 4px; text-decoration: none; font-size: 0.85em; white-space: nowrap;">🔍 Чекко</a>',
+                url
+            )
+        return format_html('<span style="color: #999;">—</span>')
+    checko_link.short_description = 'Чекко'
+
+    def checko_link_display(self, obj):
+        """Отображение ссылки на Чекко в детальной странице"""
+        if obj.ogrn:
+            url = f"https://checko.ru/company/{obj.ogrn}"
+            return format_html(
+                '<a href="{}" target="_blank" style="display: inline-block; background-color: #007bff; color: #fff; padding: 5px 12px; border-radius: 4px; text-decoration: none; font-weight: bold;white-space: nowrap;">🔍 Открыть на Чекко</a>',
+                url
+            )
+        return "ОГРН не указан"
+    checko_link_display.short_description = 'Ссылка на Чекко'
+
     # Кастомные действия
     actions = ['mark_as_strategic', 'mark_as_opk', 'export_selected']
 
@@ -337,10 +362,11 @@ class OrganizationAdmin(AdminDisplayMixin, admin.ModelAdmin):
         writer = csv.writer(response)
         writer.writerow([
             'ID', 'Название', 'ИНН', 'ОГРН', 'Город', 
-            'Отрасль', 'Руководитель', 'Телефон', 'Email'
+            'Отрасль', 'Руководитель', 'Телефон', 'Email', 'Ссылка Чекко'
         ])
         
         for org in queryset.select_related('city', 'industry', 'ceo'):
+            checko_url = f"https://checko.ru/company/{org.ogrn}" if org.ogrn else ''
             writer.writerow([
                 org.organization_id,
                 org.name,
@@ -350,7 +376,8 @@ class OrganizationAdmin(AdminDisplayMixin, admin.ModelAdmin):
                 org.industry.industry if org.industry else '',
                 org.ceo.get_short_name() if org.ceo else '',
                 org.phone or '',
-                org.email or ''
+                org.email or '',
+                checko_url
             ])
         
         return response
