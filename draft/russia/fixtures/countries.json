@@ -1,0 +1,302 @@
+[
+  {
+    "model": "core.country",
+    "pk": 1,
+    "fields": {
+      "name": "Российская Федерация",
+      "name_en": "Russia",
+      "code": "RU",
+      "code_alpha3": "RUS"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 2,
+    "fields": {
+      "name": "Соединенные Штаты Америки",
+      "name_en": "United States",
+      "code": "US",
+      "code_alpha3": "USA"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 3,
+    "fields": {
+      "name": "Китай",
+      "name_en": "China",
+      "code": "CN",
+      "code_alpha3": "CHN"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 4,
+    "fields": {
+      "name": "Германия",
+      "name_en": "Germany",
+      "code": "DE",
+      "code_alpha3": "DEU"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 5,
+    "fields": {
+      "name": "Франция",
+      "name_en": "France",
+      "code": "FR",
+      "code_alpha3": "FRA"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 6,
+    "fields": {
+      "name": "Великобритания",
+      "name_en": "United Kingdom",
+      "code": "GB",
+      "code_alpha3": "GBR"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 7,
+    "fields": {
+      "name": "Италия",
+      "name_en": "Italy",
+      "code": "IT",
+      "code_alpha3": "ITA"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 8,
+    "fields": {
+      "name": "Испания",
+      "name_en": "Spain",
+      "code": "ES",
+      "code_alpha3": "ESP"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 9,
+    "fields": {
+      "name": "Канада",
+      "name_en": "Canada",
+      "code": "CA",
+      "code_alpha3": "CAN"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 10,
+    "fields": {
+      "name": "Япония",
+      "name_en": "Japan",
+      "code": "JP",
+      "code_alpha3": "JPN"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 11,
+    "fields": {
+      "name": "Австралия",
+      "name_en": "Australia",
+      "code": "AU",
+      "code_alpha3": "AUS"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 12,
+    "fields": {
+      "name": "Бразилия",
+      "name_en": "Brazil",
+      "code": "BR",
+      "code_alpha3": "BRA"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 13,
+    "fields": {
+      "name": "Индия",
+      "name_en": "India",
+      "code": "IN",
+      "code_alpha3": "IND"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 14,
+    "fields": {
+      "name": "Беларусь",
+      "name_en": "Belarus",
+      "code": "BY",
+      "code_alpha3": "BLR"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 15,
+    "fields": {
+      "name": "Казахстан",
+      "name_en": "Kazakhstan",
+      "code": "KZ",
+      "code_alpha3": "KAZ"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 16,
+    "fields": {
+      "name": "Украина",
+      "name_en": "Ukraine",
+      "code": "UA",
+      "code_alpha3": "UKR"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 17,
+    "fields": {
+      "name": "Швейцария",
+      "name_en": "Switzerland",
+      "code": "CH",
+      "code_alpha3": "CHE"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 18,
+    "fields": {
+      "name": "Нидерланды",
+      "name_en": "Netherlands",
+      "code": "NL",
+      "code_alpha3": "NLD"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 19,
+    "fields": {
+      "name": "Швеция",
+      "name_en": "Sweden",
+      "code": "SE",
+      "code_alpha3": "SWE"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 20,
+    "fields": {
+      "name": "Норвегия",
+      "name_en": "Norway",
+      "code": "NO",
+      "code_alpha3": "NOR"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 21,
+    "fields": {
+      "name": "Финляндия",
+      "name_en": "Finland",
+      "code": "FI",
+      "code_alpha3": "FIN"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 22,
+    "fields": {
+      "name": "Польша",
+      "name_en": "Poland",
+      "code": "PL",
+      "code_alpha3": "POL"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 23,
+    "fields": {
+      "name": "Чехия",
+      "name_en": "Czech Republic",
+      "code": "CZ",
+      "code_alpha3": "CZE"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 24,
+    "fields": {
+      "name": "Турция",
+      "name_en": "Turkey",
+      "code": "TR",
+      "code_alpha3": "TUR"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 25,
+    "fields": {
+      "name": "Израиль",
+      "name_en": "Israel",
+      "code": "IL",
+      "code_alpha3": "ISR"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 26,
+    "fields": {
+      "name": "ОАЭ",
+      "name_en": "United Arab Emirates",
+      "code": "AE",
+      "code_alpha3": "ARE"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 27,
+    "fields": {
+      "name": "Республика Корея",
+      "name_en": "South Korea",
+      "code": "KR",
+      "code_alpha3": "KOR"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 28,
+    "fields": {
+      "name": "Армения",
+      "name_en": "Armenia",
+      "code": "AM",
+      "code_alpha3": "ARM"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 29,
+    "fields": {
+      "name": "Грузия",
+      "name_en": "Georgia",
+      "code": "GE",
+      "code_alpha3": "GEO"
+    }
+  },
+  {
+    "model": "core.country",
+    "pk": 30,
+    "fields": {
+      "name": "Узбекистан",
+      "name_en": "Uzbekistan",
+      "code": "UZ",
+      "code_alpha3": "UZB"
+    }
+  }
+]

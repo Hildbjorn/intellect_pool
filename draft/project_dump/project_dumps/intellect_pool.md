@@ -97,6 +97,7 @@ LOCAL_APPS = [
     'core',
     'users',
     'home',
+    'intellectual_property',
 ]
 
 # Объединение всех приложений
@@ -346,6 +347,8 @@ urlpatterns = [
     path('users/', include('users.urls')),
     # маршрут к главной странице
     path('', include('home.urls')),
+    # маршрут к результатам интеллектуальной деятельности
+    path('intellectual_property', include('intellectual_property.urls')),
 ]
 
 # добавление маршрута к медиафайлам в режиме отладки
@@ -362,8 +365,7 @@ urlpatterns += [
 ]
 
 # обработчик ошибки 404
-# handler404 = "intellect_pool.views.page_not_found_view"
-
+handler404 = "core.views.views_page_not_found.page_not_found_view"
 ```
 
 

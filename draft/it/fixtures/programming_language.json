@@ -1,0 +1,282 @@
+[
+  {
+    "model": "core.programminglanguage",
+    "pk": 1,
+    "fields": {
+      "name": "Python"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 2,
+    "fields": {
+      "name": "C"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 3,
+    "fields": {
+      "name": "C++"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 4,
+    "fields": {
+      "name": "Java"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 5,
+    "fields": {
+      "name": "C#"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 6,
+    "fields": {
+      "name": "JavaScript"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 7,
+    "fields": {
+      "name": "Visual Basic"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 8,
+    "fields": {
+      "name": "R"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 9,
+    "fields": {
+      "name": "SQL"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 10,
+    "fields": {
+      "name": "Delphi/Object Pascal"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 11,
+    "fields": {
+      "name": "Go"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 12,
+    "fields": {
+      "name": "TypeScript"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 13,
+    "fields": {
+      "name": "Rust"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 14,
+    "fields": {
+      "name": "PHP"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 15,
+    "fields": {
+      "name": "Swift"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 16,
+    "fields": {
+      "name": "Kotlin"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 17,
+    "fields": {
+      "name": "Ruby"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 18,
+    "fields": {
+      "name": "Objective-C"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 19,
+    "fields": {
+      "name": "Perl"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 20,
+    "fields": {
+      "name": "Scala"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 21,
+    "fields": {
+      "name": "Dart"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 22,
+    "fields": {
+      "name": "Lua"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 23,
+    "fields": {
+      "name": "MATLAB"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 24,
+    "fields": {
+      "name": "Assembly"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 25,
+    "fields": {
+      "name": "Groovy"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 26,
+    "fields": {
+      "name": "Haskell"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 27,
+    "fields": {
+      "name": "Julia"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 28,
+    "fields": {
+      "name": "COBOL"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 29,
+    "fields": {
+      "name": "Fortran"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 30,
+    "fields": {
+      "name": "Lisp"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 31,
+    "fields": {
+      "name": "Prolog"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 32,
+    "fields": {
+      "name": "F#"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 33,
+    "fields": {
+      "name": "Elixir"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 34,
+    "fields": {
+      "name": "Clojure"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 35,
+    "fields": {
+      "name": "Erlang"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 36,
+    "fields": {
+      "name": "Bash/Shell"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 37,
+    "fields": {
+      "name": "PowerShell"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 38,
+    "fields": {
+      "name": "VBA"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 39,
+    "fields": {
+      "name": "ABAP"
+    }
+  },
+  {
+    "model": "core.programminglanguage",
+    "pk": 40,
+    "fields": {
+      "name": "Ada"
+    }
+  }
+]

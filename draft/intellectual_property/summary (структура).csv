@@ -1,0 +1,40 @@
+field name;russian description;Комментарии
+actual;Признак действия правовой охраны;Bollean
+additional_patent;Выдан дополнительный патент для продления срока действия;"Должно быть связь с моделью ""AdditionalPatent"" (Один ко многим)"
+application_date;Дата подачи заявки на государственную регистрацию;Date
+authors;Сведения об авторах;"Должно быть связь с моделью ""Authorship"", Которая в своб очередь связана с моделями ""Organization"" и ""Person"" (может быть много авторов)"
+creation_year;Год создания;Integer
+ea_application_date;Дата подачи евразийской заявки;Date
+ea_application_number;Номер евразийской заявки;Charfield
+ea_application_publish_date;Дата публикации евразийской заявки;Date
+ea_application_publish_number;Номер публикации евразийской заявки;Charfield
+expiration_date;Дата истечения срока действия патента / исключительного права;Date
+first_usage_countries;Страна (страны) первого использования топологии;Должно быть связано со справочником стран (один ко многим)
+first_usage_date;Дата первого использования топологии;Date
+information_about_the_obligation_to_conclude_contract_of_alienation;Сведения о поданном в соответствии с пунктом 1 статьи 1366 Кодекса заявлении об обязательстве заключить договор об отчуждении патента;Text
+name;Наименование РИД;Charfield
+paris_convention_priority_country_code;Код страны подачи первой заявки в государстве - участнике Парижской конвенции по охране промышленной собственности;Должно быть связано со справочником стран (один ко многим)
+paris_convention_priority_date;Номер первой заявки в государстве - участнике Парижской конвенции по охране промышленной собственности;Charfield
+paris_convention_priority_number;Дата подачи первой заявки в государстве - участнике Парижской конвенции по охране промышленной собственности;Date
+right_holders;Правообладатели;"Должно быть связь с моделью ""Ownership"", Которая в своб очередь связана с моделями ""Organization"" и ""Person"" (может быть много правообладателей)"
+patent_starting_date;Дата начала отсчета срока действия патента;Date
+pct_application_date;Дата подачи PCT заявки;Date
+pct_application_examination_start_date;Дата начала рассмотрения заявки РСТ на национальной фазе;Date
+pct_application_number;Номер PCT заявки;Charfield
+pct_application_publish_date;Дата публикации PCT заявки;Date
+pct_application_publish_number;Номер публикации PCT заявки;Charfield
+publication_url;URL публикации в открытых реестрах сайта ФИПС;URL field
+publication_year;Год обнародования;Integer
+registration_date;Дата государственной регистрации;Date
+registration_number;Регистрационный номер изобретения (номер патента);Charfield
+revoked_patent_number;Номер аннулированного патента, признанного недействительным частично;Charfield
+update_year;Год обновления;Integer
+abstract;Реферат;Text
+claims;Формула;Text
+description;Описание;Text
+images;Фотографии или рендеры изделия;"Должно быть связано с моделью ""Image"" в которую закружаются файлы (один ко многим)"
+source_code_deposit;Исходный код (депонируемые материалы);Text
+programming_language;Язык(и) программирования;"Должно быть связано с моделью ""ProgrammingLanguage"" (один ко многим)"
+dbms;Система управления базами данных;"Должно быть связано с моделью ""DBMS"" (один ко многим)"
+operating_system;Целевая операционная система;"Должно быть связано с моделью ""OperatingSystem"" (один ко многим)"
+ip_type;Вид РИД;"Должно быть связано с моделью ""IPType"" (один к одному)"

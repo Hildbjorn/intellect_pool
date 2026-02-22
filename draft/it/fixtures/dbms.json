@@ -1,0 +1,247 @@
+[
+  {
+    "model": "core.dbms",
+    "pk": 1,
+    "fields": {
+      "name": "Oracle"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 2,
+    "fields": {
+      "name": "MySQL"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 3,
+    "fields": {
+      "name": "Microsoft SQL Server"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 4,
+    "fields": {
+      "name": "PostgreSQL"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 5,
+    "fields": {
+      "name": "MongoDB"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 6,
+    "fields": {
+      "name": "Snowflake"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 7,
+    "fields": {
+      "name": "Redis"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 8,
+    "fields": {
+      "name": "Databricks"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 9,
+    "fields": {
+      "name": "IBM Db2"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 10,
+    "fields": {
+      "name": "Elasticsearch"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 11,
+    "fields": {
+      "name": "SQLite"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 12,
+    "fields": {
+      "name": "MariaDB"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 13,
+    "fields": {
+      "name": "Microsoft Access"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 14,
+    "fields": {
+      "name": "Cassandra"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 15,
+    "fields": {
+      "name": "Splunk"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 16,
+    "fields": {
+      "name": "Microsoft Azure SQL Database"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 17,
+    "fields": {
+      "name": "Amazon DynamoDB"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 18,
+    "fields": {
+      "name": "Apache Hive"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 19,
+    "fields": {
+      "name": "FileMaker"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 20,
+    "fields": {
+      "name": "SAP HANA"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 21,
+    "fields": {
+      "name": "Firebird"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 22,
+    "fields": {
+      "name": "Couchbase"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 23,
+    "fields": {
+      "name": "Neo4j"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 24,
+    "fields": {
+      "name": "Ingres"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 25,
+    "fields": {
+      "name": "Teradata"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 26,
+    "fields": {
+      "name": "ClickHouse"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 27,
+    "fields": {
+      "name": "Apache Druid"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 28,
+    "fields": {
+      "name": "CouchDB"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 29,
+    "fields": {
+      "name": "Riak"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 30,
+    "fields": {
+      "name": "HBase"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 31,
+    "fields": {
+      "name": "Informix"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 32,
+    "fields": {
+      "name": "Greenplum"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 33,
+    "fields": {
+      "name": "Apache Derby"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 34,
+    "fields": {
+      "name": "Sybase ASE"
+    }
+  },
+  {
+    "model": "core.dbms",
+    "pk": 35,
+    "fields": {
+      "name": "Memcached"
+    }
+  }
+]

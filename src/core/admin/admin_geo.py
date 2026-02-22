@@ -1,7 +1,25 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from core.models.models_geo import District, Region, City
+from core.models.models_geo import Country, District, Region, City
 from common.admin_utils import AdminDisplayMixin
+
+
+@admin.register(Country)
+class CountryAdmin(AdminDisplayMixin, admin.ModelAdmin):
+    """
+    Админ-панель для стран (ISO 3166)
+    """
+    search_fields = ['name', 'name_en', 'code', 'code_alpha3']
+    
+    fieldsets = (
+        ('Основная информация', {
+            'fields': ('name', 'name_en', 'code', 'code_alpha3')
+        }),
+    )
+
+    def get_list_display(self, request):
+        """Переопределяем, чтобы убрать автоматически добавленные поля из миксина"""
+        return ['name', 'code', 'code_alpha3', 'name_en']
 
 
 @admin.register(District)

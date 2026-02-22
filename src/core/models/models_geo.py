@@ -3,6 +3,24 @@ from django.utils.text import slugify
 from common.utils import TextUtils
 
 
+class Country(models.Model):
+    """
+    Справочник стран (ISO 3166)
+    """
+    name = models.CharField('Название страны', max_length=100)
+    name_en = models.CharField('Название на английском', max_length=100, blank=True)
+    code = models.CharField('Код (двухбуквенный)', max_length=2, unique=True)
+    code_alpha3 = models.CharField('Код (трехбуквенный)', max_length=3, blank=True)
+
+    class Meta:
+        verbose_name = 'Страна'
+        verbose_name_plural = 'Страны'
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.name} ({self.code})'
+
+
 class District(models.Model):
     """
     Федеральный округ

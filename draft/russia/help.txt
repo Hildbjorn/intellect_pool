@@ -14,3 +14,9 @@ python excel_to_fixtures.py --help
 python manage.py loaddata fixtures/district.json
 python manage.py loaddata fixtures/region.json
 python manage.py loaddata fixtures/city.json
+
+
+
+python manage.py loaddata programming_language.json
+python manage.py loaddata dbms.json
+python manage.py loaddata operating_system.json

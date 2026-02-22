@@ -1,0 +1,16 @@
+"field name";"english description";"russian description";format;linkid
+structure-20180828;"Structure open data ""Open registry of programs for electronic computers""";"Cтруктура набора открытых данных ""Открытый реестр программ для электронно-вычислительных машин""";csv;
+registration_number;"Registration number";"Регистрационный номер";csv;
+registration_date;"Date of registration";"Дата государственной регистрации";csv;
+application_number;"Application number for registration";"Номер заявки на государственную регистрацию";csv;
+application_date;"Application date for registration";"Дата подачи заявки на государственную регистрацию";csv;
+authors;Authors;"Сведения об авторах";csv;
+authors_count;"A number of authors(including those who refused to be mentioned)";"Количество авторов (включая отказавшихся быть упомянутыми)";csv;
+right_holders;"Right holders";"Сведения о правообладателе(ях)";csv;
+contact_to_third_parties;"Contact details to provide to third parties";"Контактные реквизиты для предоставления третьим лицам";csv;
+program_name;"Program name";"Название программы для ЭВМ";csv;
+creation_year;"Creation year";"Год создания";csv;
+registration_publish_date;"Date of publication of information about the registration";"Дата публикации сведений о регистрации";csv;
+registration_publish_number;"Paper publication of information about the registration";"Номер бюллетеня публикации сведений о регистрации";csv;
+actual;"Legal protection is valid or not";"Признак действия правовой охраны";csv;
+publication_url;"URL of publication in the FIPS Open Registers";"URL публикации в открытых реестрах сайта ФИПС";csv;

@@ -1,0 +1,289 @@
+[
+  {
+    "model": "core.operatingsystem",
+    "pk": 1,
+    "fields": {
+      "name": "Astra Linux Special Edition"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 2,
+    "fields": {
+      "name": "Windows 11"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 3,
+    "fields": {
+      "name": "Windows 10"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 4,
+    "fields": {
+      "name": "Android"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 5,
+    "fields": {
+      "name": "iOS"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 6,
+    "fields": {
+      "name": "macOS"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 7,
+    "fields": {
+      "name": "Linux (общее)"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 8,
+    "fields": {
+      "name": "Ubuntu"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 9,
+    "fields": {
+      "name": "Debian"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 10,
+    "fields": {
+      "name": "Fedora"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 11,
+    "fields": {
+      "name": "CentOS"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 12,
+    "fields": {
+      "name": "Red Hat Enterprise Linux (RHEL)"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 13,
+    "fields": {
+      "name": "Arch Linux"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 14,
+    "fields": {
+      "name": "Linux Mint"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 15,
+    "fields": {
+      "name": "openSUSE"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 16,
+    "fields": {
+      "name": "AlmaLinux"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 17,
+    "fields": {
+      "name": "Rocky Linux"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 18,
+    "fields": {
+      "name": "Pop!_OS"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 19,
+    "fields": {
+      "name": "Zorin OS"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 20,
+    "fields": {
+      "name": "elementary OS"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 21,
+    "fields": {
+      "name": "Manjaro"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 22,
+    "fields": {
+      "name": "Gentoo"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 23,
+    "fields": {
+      "name": "Slackware"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 24,
+    "fields": {
+      "name": "FreeBSD"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 25,
+    "fields": {
+      "name": "OpenBSD"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 26,
+    "fields": {
+      "name": "Windows Server"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 27,
+    "fields": {
+      "name": "Windows 8/8.1"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 28,
+    "fields": {
+      "name": "Windows 7"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 29,
+    "fields": {
+      "name": "iPadOS"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 30,
+    "fields": {
+      "name": "watchOS"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 31,
+    "fields": {
+      "name": "tvOS"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 32,
+    "fields": {
+      "name": "ChromeOS"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 33,
+    "fields": {
+      "name": "KaiOS"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 34,
+    "fields": {
+      "name": "Ubuntu Core"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 35,
+    "fields": {
+      "name": "Raspberry Pi OS"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 36,
+    "fields": {
+      "name": "Alpine Linux"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 37,
+    "fields": {
+      "name": "NixOS"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 38,
+    "fields": {
+      "name": "Void Linux"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 39,
+    "fields": {
+      "name": "Solus"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 40,
+    "fields": {
+      "name": "Deepin"
+    }
+  },
+  {
+    "model": "core.operatingsystem",
+    "pk": 41,
+    "fields": {
+      "name": "KDE Neon"
+    }
+  }
+]
