@@ -2,10 +2,8 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 from django.db.models import Count
-from core.models.models_industry import Industry
 from core.models.models_organization import ActivityType, CeoPosition, Organization
-from core.models.models_person import Person
-from common.admin_utils import AdminImageMixin, AdminDisplayMixin
+from common.admin_utils import AdminDisplayMixin
 
 
 @admin.register(ActivityType)

@@ -69,6 +69,7 @@ LOCAL_APPS = [
     'core',
     'users',
     'home',
+    'intellectual_property',
 ]
 
 # Объединение всех приложений

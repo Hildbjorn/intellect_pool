@@ -1,6 +1,6 @@
 from django.urls import path
 
 
-# Маршруты бвзф знаний
+# Маршруты РИД
 urlpatterns = [
 ]
