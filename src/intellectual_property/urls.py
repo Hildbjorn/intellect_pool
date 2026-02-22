@@ -1,6 +1,6 @@
 from django.urls import path
 
 
-# Маршруты РИД
+# Маршруты результатов интеллектуальной собственности
 urlpatterns = [
 ]
