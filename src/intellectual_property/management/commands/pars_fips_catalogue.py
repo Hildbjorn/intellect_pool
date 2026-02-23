@@ -27,6 +27,7 @@ from natasha import (
     NewsSyntaxParser,
     NewsNERTagger,
     Doc,
+    NamesExtractor
 )
 
 from intellectual_property.models import (
@@ -46,8 +47,7 @@ logger = logging.getLogger(__name__)
 
 class RussianTextProcessor:
     """
-    Класс для обработки русских текстов без использования natasha
-    (которая создает проблемы)
+    Полноценный процессор для русских текстов с использованием natasha
     """
     
     # Список римских цифр
@@ -80,7 +80,8 @@ class RussianTextProcessor:
         'ФИАН', 'МИАН', 'ИПМ', 'ИПМех', 'ИППИ',
         'ЦАГИ', 'ЦИАМ', 'ВИАМ', 'ВИЛС', 'ВИМС', 'ВНИИ',
         'МНТК', 'МЧС', 'МВД', 'ФСБ', 'ФСО', 'Рос', 'Мин',
-        'ЛТД', 'ИНК', 'КО', 'ГМБХ', 'АГ', 'СА', 'НВ', 'БВ',
+        'ЛТД', 'ИНК', 'КО', 'ГМБХ', 'АГ', 'СА', 'НВ', 'БВ', 'СЕ',
+        'Ко', 'Ltd', 'Inc', 'GmbH', 'AG', 'SA', 'NV', 'BV', 'SE',
     }
     
     # Аббревиатуры для РИД
@@ -100,9 +101,51 @@ class RussianTextProcessor:
     }
     
     def __init__(self):
+        # Инициализация компонентов natasha
+        self.segmenter = Segmenter()
+        self.morph_vocab = MorphVocab()
+        self.emb = NewsEmbedding()
+        self.morph_tagger = NewsMorphTagger(self.emb)
+        self.syntax_parser = NewsSyntaxParser(self.emb)
+        self.ner_tagger = NewsNERTagger(self.emb)
+        self.names_extractor = NamesExtractor(self.morph_vocab)
+        
+        # Кэши для производительности
+        self.doc_cache = {}
+        self.morph_cache = {}
+        
         # Добавляем римские цифры в аббревиатуры
         self.ORG_ABBR.update(self.ROMAN_NUMERALS)
         self.RID_ABBR.update(self.ROMAN_NUMERALS)
+        
+        # Статистика использования
+        self.stats = defaultdict(int)
+    
+    def get_doc(self, text: str) -> Optional[Doc]:
+        """Получение или создание документа с кэшированием"""
+        if not text:
+            return None
+        
+        if text in self.doc_cache:
+            self.stats['doc_cache_hits'] += 1
+            return self.doc_cache[text]
+        
+        doc = Doc(text)
+        doc.segment(self.segmenter)
+        doc.tag_morph(self.morph_tagger)
+        doc.parse_syntax(self.syntax_parser)
+        doc.tag_ner(self.ner_tagger)
+        
+        # Лемматизация
+        for token in doc.tokens:
+            token.lemmatize(self.morph_vocab)
+        
+        for span in doc.spans:
+            span.normalize(self.morph_vocab)
+        
+        self.doc_cache[text] = doc
+        self.stats['doc_cache_misses'] += 1
+        return doc
     
     def is_roman_numeral(self, text: str) -> bool:
         """Проверка на римскую цифру"""
@@ -118,20 +161,62 @@ class RussianTextProcessor:
         clean_text = text.strip('.,;:!?()').upper()
         return clean_text in abbr_set
     
-    def fix_organization_quotes(self, text: str) -> str:
-        """
-        Исправляет кавычки в названиях организаций
-        """
+    def is_person(self, text: str) -> bool:
+        """Определение, является ли текст ФИО человека с использованием NER"""
+        if not text or len(text) < 6:
+            return False
+        
+        doc = self.get_doc(text)
+        if doc and doc.spans:
+            for span in doc.spans:
+                if span.type == 'PER':
+                    return True
+        
+        # Fallback на правила
+        org_indicators = ['ООО', 'ЗАО', 'АО', 'ПАО', 'ФГУП', 'ФГБУ', 
+                         'Общество', 'Компания', 'Корпорация', 'Завод', 
+                         'Институт', 'Университет', 'Академия', 'Лаборатория',
+                         'НИИ', 'КБ', 'НПО', 'Центр', 'Фирма']
+        
+        if any(ind in text for ind in org_indicators):
+            return False
+        
+        words = text.split()
+        if 2 <= len(words) <= 4:
+            name_like = 0
+            for word in words:
+                clean = word.rstrip('.,')
+                if clean and clean[0].isupper() and len(clean) > 1:
+                    name_like += 1
+            return name_like >= len(words) - 1
+        
+        return False
+    
+    def extract_person_parts(self, text: str) -> Dict[str, str]:
+        """Извлечение частей ФИО с помощью natasha"""
+        matches = self.names_extractor(text)
+        if matches:
+            fact = matches[0].fact
+            return {
+                'last': fact.last,
+                'first': fact.first,
+                'middle': fact.middle,
+                'full': fact.as_string
+            }
+        return {}
+    
+    def fix_quotes(self, text: str) -> str:
+        """Исправление кавычек и пробелов вокруг них"""
         if not text:
             return text
         
-        # Заменяем двойные кавычки на одинарные с пробелом
-        text = re.sub(r'""', ' "', text)
+        # Заменяем множественные кавычки
+        text = re.sub(r'""+', ' "', text)
         
-        # Добавляем пробел перед открывающей кавычкой, если его нет
+        # Пробел перед открывающей кавычкой
         text = re.sub(r'([^ ])"([^"])', r'\1 "\2', text)
         
-        # Добавляем пробел после закрывающей кавычки, если его нет
+        # Пробел после закрывающей кавычки
         text = re.sub(r'([^"])"([^ ])', r'\1" \2', text)
         
         # Убираем лишние пробелы
@@ -139,15 +224,72 @@ class RussianTextProcessor:
         
         return text.strip()
     
+    def format_initials(self, text: str) -> str:
+        """Форматирование инициалов и фамилий после 'им.' или 'имени'"""
+        def replace_initials(match):
+            prefix = match.group(1).lower()  # "им." или "имени"
+            initials = match.group(2)        # "и.м." или "и м"
+            surname = match.group(3)         # "сеченова"
+            
+            # Форматируем инициалы
+            initials_clean = re.sub(r'\s+', '', initials)
+            initials_formatted = '.'.join([i.upper() for i in initials_clean if i.isalpha()]) + '.'
+            
+            # Фамилия с большой буквы
+            surname_formatted = surname[0].upper() + surname[1:].lower()
+            
+            return f"{prefix} {initials_formatted} {surname_formatted}"
+        
+        pattern = r'(им\.|имени)\s+([а-яё]\s*\.?\s*[а-яё]?\s*\.?)\s+([а-яё]+)'
+        return re.sub(pattern, replace_initials, text, flags=re.IGNORECASE)
+    
+    def format_person_name(self, name: str) -> str:
+        """Форматирование ФИО человека"""
+        if not name:
+            return name
+        
+        # Сначала пробуем извлечь через names_extractor
+        parts = self.extract_person_parts(name)
+        if parts and parts.get('full'):
+            return parts['full']
+        
+        # Fallback: ручное форматирование
+        words = name.split()
+        formatted = []
+        
+        for word in words:
+            if not word:
+                continue
+            
+            # Инициалы
+            if '.' in word:
+                initials = [ch for ch in word if ch.isalpha()]
+                formatted.append(''.join([i.upper() + '.' for i in initials]))
+                continue
+            
+            # Обычные слова
+            clean = word.strip('.,')
+            if clean.isupper() and len(clean) > 1:
+                formatted.append(clean[0].upper() + clean[1:].lower())
+            else:
+                formatted.append(clean)
+        
+        return ' '.join(formatted)
+    
     def format_organization_name(self, name: str) -> str:
-        """
-        Форматирование названия организации
-        """
+        """Форматирование названия организации"""
         if not name:
             return name
         
         # Исправляем кавычки
-        name = self.fix_organization_quotes(name)
+        name = self.fix_quotes(name)
+        
+        # Обрабатываем "им. И.О. Фамилия"
+        name = self.format_initials(name)
+        
+        # Получаем NER для определения именованных сущностей
+        doc = self.get_doc(name)
+        ner_spans = {span.text: span.type for span in doc.spans} if doc else {}
         
         # Разбиваем на части по кавычкам
         parts = re.split(r'(")', name)
@@ -164,53 +306,53 @@ class RussianTextProcessor:
                 result.append(part)
                 continue
             
-            if in_quotes:
+            words = part.split()
+            formatted_words = []
+            
+            for word in words:
+                if not word:
+                    continue
+                
+                word_clean = word.strip('.,;:()')
+                
+                # Проверка на аббревиатуру
+                if self.is_abbr(word_clean, self.ORG_ABBR):
+                    formatted_words.append(word_clean.upper())
+                
+                # Проверка на римские цифры
+                elif self.is_roman_numeral(word_clean):
+                    formatted_words.append(word_clean.upper())
+                
+                # Проверка на именованную сущность
+                elif word_clean in ner_spans and ner_spans[word_clean] in ['PER', 'LOC', 'ORG']:
+                    formatted_words.append(word_clean[0].upper() + word_clean[1:].lower())
+                
                 # Внутри кавычек - каждое слово с большой буквы
-                words = part.split()
-                formatted_words = []
-                for word in words:
-                    if not word:
-                        continue
-                    
-                    # Проверяем аббревиатуры
-                    if self.is_abbr(word, self.ORG_ABBR) or self.is_roman_numeral(word):
-                        formatted_words.append(word.upper())
-                    else:
-                        # Обычное слово с большой буквы
-                        formatted_words.append(word[0].upper() + word[1:].lower())
-                result.append(' '.join(formatted_words))
-            else:
-                # Вне кавычек - аббревиатуры в верхнем, остальные в нижнем
-                words = part.split()
-                formatted_words = []
-                for word in words:
-                    if not word:
-                        continue
-                    
-                    if self.is_abbr(word, self.ORG_ABBR) or self.is_roman_numeral(word):
-                        formatted_words.append(word.upper())
-                    elif word.isupper() and len(word) > 1:
-                        # Неизвестная аббревиатура - оставляем как есть
-                        formatted_words.append(word)
-                    else:
-                        # Обычные слова в нижнем регистре
-                        formatted_words.append(word.lower())
-                result.append(' '.join(formatted_words))
+                elif in_quotes:
+                    formatted_words.append(word_clean[0].upper() + word_clean[1:].lower())
+                
+                # Вне кавычек - обычные слова с маленькой
+                else:
+                    formatted_words.append(word_clean.lower())
+            
+            result.append(' '.join(formatted_words))
         
         return ''.join(result)
     
     def format_rid_name(self, text: str) -> str:
-        """
-        Форматирование названия РИД по правилам русского языка
-        """
+        """Форматирование названия РИД"""
         if not text or not isinstance(text, str):
             return text
         
         if len(text.strip()) <= 1:
             return text
         
-        # Приводим всё к нижнему регистру
+        # Приводим к нижнему регистру
         text_lower = text.lower()
+        
+        # Получаем NER для определения именованных сущностей
+        doc = self.get_doc(text)
+        ner_spans = {span.text.lower(): span.type for span in doc.spans} if doc else {}
         
         # Разбиваем на предложения
         sentences = re.split(r'(?<=[.!?])\s+(?=[а-яёa-z])', text_lower)
@@ -234,27 +376,41 @@ class RussianTextProcessor:
                     formatted_words.append(word)
                     continue
                 
-                # Проверяем аббревиатуры
-                if self.is_abbr(word, self.RID_ABBR) or self.is_roman_numeral(word):
-                    formatted_words.append(word.upper())
+                word_clean = word.strip('.,;:!?()')
+                
+                # Проверка на аббревиатуру
+                if self.is_abbr(word_clean, self.RID_ABBR):
+                    formatted_words.append(word_clean.upper())
                     is_first_word = False
                     continue
                 
-                # Проверяем инициалы
-                if re.match(r'^[a-z]\.$', word) or re.match(r'^[a-z]\.[a-z]\.$', word):
-                    formatted_words.append(word.upper())
+                # Проверка на римские цифры
+                elif self.is_roman_numeral(word_clean):
+                    formatted_words.append(word_clean.upper())
                     is_first_word = False
                     continue
                 
-                # Проверяем числа
-                if word.isdigit():
-                    formatted_words.append(word)
+                # Проверка на именованную сущность
+                elif word_clean in ner_spans:
+                    formatted_words.append(word_clean[0].upper() + word_clean[1:])
                     is_first_word = False
                     continue
                 
-                # Проверяем слова через дефис
-                if '-' in word:
-                    parts = word.split('-')
+                # Проверка на инициалы
+                elif re.match(r'^[a-z]\.$', word_clean) or re.match(r'^[a-z]\.[a-z]\.$', word_clean):
+                    formatted_words.append(word_clean.upper())
+                    is_first_word = False
+                    continue
+                
+                # Проверка на числа
+                elif word_clean.isdigit():
+                    formatted_words.append(word_clean)
+                    is_first_word = False
+                    continue
+                
+                # Проверка на слова через дефис
+                elif '-' in word_clean:
+                    parts = word_clean.split('-')
                     formatted_parts = []
                     for i, part in enumerate(parts):
                         if self.is_abbr(part, self.RID_ABBR) or self.is_roman_numeral(part):
@@ -270,82 +426,22 @@ class RussianTextProcessor:
                 # Обычные слова
                 if is_first_word:
                     # Первое слово с большой буквы
-                    formatted_words.append(word[0].upper() + word[1:])
+                    formatted_words.append(word_clean[0].upper() + word_clean[1:])
                     is_first_word = False
-                elif word.lower() in self.LOWERCASE_WORDS:
+                elif word_clean in self.LOWERCASE_WORDS:
                     # Предлоги и союзы с маленькой
-                    formatted_words.append(word.lower())
+                    formatted_words.append(word_clean)
                 else:
                     # Остальные слова с маленькой
-                    formatted_words.append(word)
+                    formatted_words.append(word_clean)
             
             formatted_sentences.append(''.join(formatted_words))
         
         return ' '.join(formatted_sentences)
-    
-    def format_person_name(self, name: str) -> str:
-        """
-        Форматирование ФИО человека
-        """
-        if not name:
-            return name
-        
-        parts = name.split()
-        formatted_parts = []
-        
-        for part in parts:
-            if not part:
-                continue
-            
-            # Инициалы
-            if '.' in part:
-                initials = [p for p in part if p.isalpha()]
-                formatted_parts.append(''.join([i.upper() + '.' for i in initials]))
-                continue
-            
-            # Обычные слова
-            clean = part.strip('.,')
-            if clean.isupper() and len(clean) > 1:
-                formatted_parts.append(clean[0].upper() + clean[1:].lower())
-            else:
-                formatted_parts.append(part)
-        
-        return ' '.join(formatted_parts)
-    
-    def is_person(self, text: str) -> bool:
-        """
-        Определение, является ли текст ФИО человека
-        """
-        if not text or len(text) < 6:
-            return False
-        
-        # Если есть явные признаки организации
-        org_indicators = ['ООО', 'ЗАО', 'АО', 'ПАО', 'ФГУП', 'ФГБУ', 
-                         'Общество', 'Компания', 'Корпорация', 'Завод', 
-                         'Институт', 'Университет', 'Академия', 'Лаборатория',
-                         'НИИ', 'КБ', 'НПО', 'Центр', 'Фирма']
-        
-        if any(ind in text for ind in org_indicators):
-            return False
-        
-        # Паттерны ФИО
-        words = text.split()
-        if 2 <= len(words) <= 4:
-            # Проверяем, что слова выглядят как имена
-            name_like = 0
-            for word in words:
-                clean = word.rstrip('.,')
-                if clean and clean[0].isupper() and len(clean) > 1:
-                    name_like += 1
-            return name_like >= len(words) - 1
-        
-        return False
 
 
 class OrganizationNormalizer:
-    """
-    Класс для нормализации названий организаций
-    """
+    """Нормализация названий организаций"""
     
     def __init__(self):
         self.rules_cache = None
@@ -353,7 +449,7 @@ class OrganizationNormalizer:
         self.load_rules()
     
     def load_rules(self):
-        """Загрузка правил из БД в кэш"""
+        """Загрузка правил из БД"""
         try:
             rules = OrganizationNormalizationRule.objects.all().order_by('priority')
             self.rules_cache = [
@@ -370,7 +466,7 @@ class OrganizationNormalizer:
             logger.warning(f"Не удалось загрузить правила нормализации: {e}")
     
     def normalize(self, name: str) -> Dict[str, Any]:
-        """Нормализация названия с использованием правил из БД"""
+        """Нормализация названия"""
         if pd.isna(name) or not name:
             return {'normalized': '', 'keywords': [], 'original': name}
         
@@ -398,7 +494,6 @@ class OrganizationNormalizer:
         
         # Извлекаем ключевые слова
         keywords = []
-        # Слова в кавычках
         quoted = re.findall(r'"([^"]+)"', original)
         for q in quoted:
             words = q.lower().split()
@@ -411,14 +506,12 @@ class OrganizationNormalizer:
         }
     
     def format_organization_name(self, name: str) -> str:
-        """Форматирование названия организации"""
+        """Форматирование названия"""
         return self.processor.format_organization_name(name)
 
 
 class EntityTypeDetector:
-    """
-    Детектор типов сущностей
-    """
+    """Детектор типов сущностей"""
     
     def __init__(self):
         self.processor = RussianTextProcessor()
@@ -431,22 +524,18 @@ class EntityTypeDetector:
 
 
 class PersonNameFormatter:
-    """
-    Класс для форматирования имен людей
-    """
+    """Форматирование имен людей"""
     
     def __init__(self):
         self.processor = RussianTextProcessor()
     
     def format(self, name: str) -> str:
-        """Форматирование ФИО человека"""
+        """Форматирование ФИО"""
         return self.processor.format_person_name(name)
 
 
 class RIDNameFormatter:
-    """
-    Класс для форматирования названий РИД
-    """
+    """Форматирование названий РИД"""
     
     def __init__(self):
         self.processor = RussianTextProcessor()
@@ -457,10 +546,7 @@ class RIDNameFormatter:
 
 
 class BaseFIPSParser:
-    """
-    Базовый класс для всех парсеров каталогов ФИПС.
-    Содержит общие методы для работы с данными.
-    """
+    """Базовый класс для всех парсеров"""
     
     def __init__(self, command):
         self.command = command
@@ -483,21 +569,39 @@ class BaseFIPSParser:
         self.city_cache = {}
         self.activity_type_cache = {}
         self.ceo_position_cache = {}
+        
+        # Статистика пропусков по дате
+        self.skipped_by_date = 0
     
     def get_ip_type(self):
-        """Должен быть переопределен в дочерних классах"""
         raise NotImplementedError
     
     def get_required_columns(self):
-        """Возвращает список обязательных колонок для данного типа РИД"""
         raise NotImplementedError
     
     def parse_dataframe(self, df, catalogue):
-        """Основной метод парсинга DataFrame"""
         raise NotImplementedError
     
+    def should_skip_by_date(self, registration_number: str, upload_date: Optional[datetime.date]) -> bool:
+        """
+        Проверка, нужно ли пропустить запись по дате обновления
+        """
+        if self.command.force or not upload_date:
+            return False
+        
+        try:
+            ip_object = IPObject.objects.get(registration_number=registration_number)
+            
+            if ip_object.updated_at and ip_object.updated_at.date() >= upload_date:
+                self.skipped_by_date += 1
+                return True
+                
+        except IPObject.DoesNotExist:
+            pass
+        
+        return False
+    
     def clean_string(self, value):
-        """Очистка строкового значения"""
         if pd.isna(value) or value is None:
             return ''
         value = str(value).strip()
@@ -506,7 +610,6 @@ class BaseFIPSParser:
         return value
     
     def parse_date(self, value):
-        """Парсинг даты из строки"""
         if pd.isna(value) or not value:
             return None
         
@@ -526,15 +629,12 @@ class BaseFIPSParser:
             return None
     
     def parse_bool(self, value):
-        """Парсинг булевого значения"""
         if pd.isna(value) or not value:
             return False
-        
         value = str(value).lower().strip()
         return value in ['1', 'true', 'yes', 'да', 'действует', 't', '1.0', 'активен']
     
     def get_or_create_country(self, code):
-        """Получение страны по коду"""
         if not code or pd.isna(code):
             return None
         
@@ -556,7 +656,6 @@ class BaseFIPSParser:
                 self.country_cache[code] = country
                 return country
             
-            self.stdout.write(self.style.WARNING(f"  Страна с кодом {code} не найдена"))
             return None
             
         except Exception as e:
@@ -564,7 +663,6 @@ class BaseFIPSParser:
             return None
     
     def parse_authors(self, authors_str):
-        """Парсинг строки с авторами"""
         if pd.isna(authors_str) or not authors_str:
             return []
         
@@ -608,7 +706,6 @@ class BaseFIPSParser:
         return result
     
     def parse_patent_holders(self, holders_str):
-        """Парсинг строки с патентообладателями"""
         if pd.isna(holders_str) or not holders_str:
             return []
         
@@ -627,7 +724,6 @@ class BaseFIPSParser:
         return result
     
     def find_or_create_person(self, person_data):
-        """Поиск или создание физического лица"""
         cache_key = f"{person_data['last_name']}|{person_data['first_name']}|{person_data['middle_name']}"
         
         if cache_key in self.person_cache:
@@ -673,7 +769,6 @@ class BaseFIPSParser:
             return None
     
     def find_or_create_person_from_name(self, full_name):
-        """Поиск или создание физического лица по полному имени"""
         if pd.isna(full_name) or not full_name:
             return None
         
@@ -710,7 +805,6 @@ class BaseFIPSParser:
         return self.find_or_create_person(person_data)
     
     def find_similar_organization(self, org_name):
-        """Поиск похожей организации"""
         if pd.isna(org_name) or not org_name:
             return None
         
@@ -725,7 +819,7 @@ class BaseFIPSParser:
         if direct_match:
             return direct_match
         
-        # Нормализуем название
+        # Нормализованный поиск
         norm_data = self.org_normalizer.normalize(org_name)
         normalized = norm_data['normalized']
         keywords = norm_data['keywords']
@@ -752,16 +846,9 @@ class BaseFIPSParser:
             if similar:
                 return similar
         
-        full_match = Organization.objects.filter(
-            models.Q(full_name__icontains=org_name)
-        ).first()
-        if full_match:
-            return full_match
-        
         return None
     
     def find_or_create_organization(self, org_name):
-        """Поиск или создание организации"""
         if pd.isna(org_name) or not org_name:
             return None
         
@@ -818,7 +905,6 @@ class BaseFIPSParser:
             return None
     
     def process_entity(self, entity_name, ip_object):
-        """Обработка сущности"""
         if pd.isna(entity_name) or not entity_name:
             return False
         
@@ -833,19 +919,16 @@ class BaseFIPSParser:
         else:
             org = self.find_or_create_organization(entity_name)
             if org:
-                ip_object.owner_organizations.add(org)
                 self.stdout.write(f"        ✅ Организация: {org.name[:50]}...")
                 return True
         
         return False
     
     def process_holders(self, holders_list, ip_object):
-        """Обработка списка патентообладателей"""
         if not holders_list:
             return
         
         for holder_name in holders_list:
-            self.stdout.write(f"        Анализ: {holder_name[:100]}...")
             self.process_entity(holder_name, ip_object)
 
 
@@ -863,6 +946,10 @@ class InventionParser(BaseFIPSParser):
         
         if not registration_number:
             return 'skipped'
+        
+        # Проверка по дате обновления
+        if self.should_skip_by_date(registration_number, catalogue.upload_date.date()):
+            return 'skipped_by_date'
         
         self.stdout.write(f"\n  📄 Обработка патента №{registration_number}")
         
@@ -990,7 +1077,9 @@ class InventionParser(BaseFIPSParser):
             holders_list = self.parse_patent_holders(holders_str)
             if holders_list:
                 self.stdout.write(f"     🏢 Патентообладатели: {len(holders_list)}")
-                self.process_holders(holders_list, ip_object)
+                for holder_name in holders_list:
+                    self.stdout.write(f"        Анализ: {holder_name[:100]}...")
+                    self.process_entity(holder_name, ip_object)
             else:
                 self.stdout.write("     🏢 Патентообладатели: нет данных")
         else:
@@ -1006,6 +1095,7 @@ class InventionParser(BaseFIPSParser):
             'created': 0,
             'updated': 0,
             'skipped': 0,
+            'skipped_by_date': 0,
             'errors': 0
         }
         
@@ -1014,6 +1104,9 @@ class InventionParser(BaseFIPSParser):
             self.stdout.write(self.style.ERROR("  ❌ Тип РИД 'invention' не найден в БД"))
             stats['errors'] += 1
             return stats
+        
+        # Сбрасываем счетчик пропусков по дате
+        self.skipped_by_date = 0
         
         with tqdm(total=len(df), desc="  Обработка записей", unit=" зап") as pbar:
             for idx, row in df.iterrows():
@@ -1024,6 +1117,9 @@ class InventionParser(BaseFIPSParser):
                         stats['created'] += 1
                     elif result == 'updated':
                         stats['updated'] += 1
+                    elif result == 'skipped_by_date':
+                        stats['skipped_by_date'] += 1
+                        stats['skipped'] += 1
                     elif result == 'skipped':
                         stats['skipped'] += 1
                     
@@ -1038,9 +1134,12 @@ class InventionParser(BaseFIPSParser):
                 finally:
                     pbar.update(1)
         
+        stats['skipped_by_date'] = self.skipped_by_date
+        
         self.stdout.write(self.style.SUCCESS(f"  ✅ Парсинг изобретений завершен"))
         self.stdout.write(f"     Создано: {stats['created']}, Обновлено: {stats['updated']}, "
-                         f"Пропущено: {stats['skipped']}, Ошибок: {stats['errors']}")
+                         f"Пропущено всего: {stats['skipped']} (из них по дате: {stats['skipped_by_date']}), "
+                         f"Ошибок: {stats['errors']}")
         
         return stats
 
@@ -1056,7 +1155,6 @@ class UtilityModelParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер полезных моделей готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
@@ -1071,7 +1169,6 @@ class IndustrialDesignParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер промышленных образцов готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
@@ -1086,7 +1183,6 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер топологий микросхем готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
@@ -1101,7 +1197,6 @@ class ComputerProgramParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер программ для ЭВМ готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
@@ -1116,7 +1211,6 @@ class DatabaseParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер баз данных готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
@@ -1184,6 +1278,7 @@ class Command(BaseCommand):
             'created': 0,
             'updated': 0,
             'skipped': 0,
+            'skipped_by_date': 0,
             'errors': 0
         }
         
@@ -1197,6 +1292,7 @@ class Command(BaseCommand):
             
             for key in ['processed', 'created', 'updated', 'skipped', 'errors']:
                 total_stats[key] += stats.get(key, 0)
+            total_stats['skipped_by_date'] += stats.get('skipped_by_date', 0)
         
         self.print_final_stats(total_stats)
     
@@ -1218,6 +1314,7 @@ class Command(BaseCommand):
             'created': 0,
             'updated': 0,
             'skipped': 0,
+            'skipped_by_date': 0,
             'errors': 0
         }
         
@@ -1403,7 +1500,8 @@ class Command(BaseCommand):
         self.stdout.write(f"📝 Всего записей обработано: {stats['processed']}")
         self.stdout.write(f"✅ Создано: {stats['created']}")
         self.stdout.write(f"🔄 Обновлено: {stats['updated']}")
-        self.stdout.write(f"⏭️  Пропущено: {stats['skipped']}")
+        self.stdout.write(f"⏭️  Пропущено всего: {stats['skipped']}")
+        self.stdout.write(f"   └─ по дате обновления: {stats.get('skipped_by_date', 0)}")
         
         if stats['errors'] > 0:
             self.stdout.write(self.style.ERROR(f"❌ Ошибок: {stats['errors']}"))
