@@ -20,87 +20,106 @@ from intellectual_property.models import (
     FipsOpenDataCatalogue, IPType, ProtectionDocumentType,
     IPObject, AdditionalPatent, IPImage
 )
-from core.models import City, Region, District, Person, Organization, FOIV, Country, RFRepresentative
+from core.models import (
+    City, Region, District, Person, Organization, 
+    FOIV, Country, RFRepresentative,
+    OrganizationNormalizationRule, ActivityType, CeoPosition
+)
 from common.utils.text import TextUtils
 from common.utils.dates import DateUtils
 
 logger = logging.getLogger(__name__)
 
 
+class OrganizationNormalizer:
+    """
+    Класс для нормализации названий организаций с поддержкой правил из БД
+    """
+    
+    def __init__(self):
+        self.rules_cache = None
+        self.load_rules()
+    
+    def load_rules(self):
+        """Загрузка правил из БД в кэш"""
+        rules = OrganizationNormalizationRule.objects.all().order_by('priority')
+        self.rules_cache = [
+            {
+                'original': rule.original_text.lower(),
+                'replacement': rule.replacement_text.lower(),
+                'type': rule.rule_type,
+                'priority': rule.priority
+            }
+            for rule in rules
+        ]
+    
+    def reload_rules(self):
+        """Перезагрузка правил (после изменений в БД)"""
+        self.load_rules()
+    
+    def normalize(self, name: str) -> Dict[str, Any]:
+        """
+        Нормализация названия с использованием правил из БД
+        Возвращает словарь с нормализованным текстом и ключевыми словами
+        """
+        if pd.isna(name) or not name:
+            return {'normalized': '', 'keywords': [], 'original': name}
+        
+        original = str(name).strip()
+        name_lower = original.lower()
+        
+        # Применяем правила из БД
+        normalized = name_lower
+        if self.rules_cache:
+            for rule in self.rules_cache:
+                if rule['type'] == 'ignore':
+                    # Для игнорируемых слов просто удаляем их
+                    pattern = r'\b' + re.escape(rule['original']) + r'\b'
+                    normalized = re.sub(pattern, '', normalized)
+                else:
+                    # Для замен
+                    pattern = r'\b' + re.escape(rule['original']) + r'\b'
+                    normalized = re.sub(pattern, rule['replacement'], normalized)
+        
+        # Убираем кавычки всех видов
+        normalized = re.sub(r'["\'«»„“”]', '', normalized)
+        
+        # Убираем знаки препинания, кроме дефиса
+        normalized = re.sub(r'[^\w\s-]', ' ', normalized)
+        
+        # Убираем лишние пробелы
+        normalized = ' '.join(normalized.split())
+        
+        # Извлекаем ключевые слова для поиска
+        keywords = self._extract_keywords(original)
+        
+        return {
+            'normalized': normalized,
+            'keywords': keywords,
+            'original': original
+        }
+    
+    def _extract_keywords(self, text: str) -> List[str]:
+        """Извлечение ключевых слов для поиска"""
+        keywords = []
+        
+        # Слова в кавычках (обычно уникальное название)
+        quoted = re.findall(r'"([^"]+)"', text)
+        for q in quoted:
+            words = q.lower().split()
+            keywords.extend([w for w in words if len(w) > 3])
+        
+        # Аббревиатуры (последовательности заглавных букв)
+        abbreviations = re.findall(r'\b[А-ЯЁA-Z]{2,}\b', text)
+        keywords.extend([a.lower() for a in abbreviations if len(a) >= 2])
+        
+        return list(set(keywords))
+
+
 class EntityTypeDetector:
     """
-    Детектор типов сущностей (представительство РФ, ФОИВ, организация, физлицо)
-    Вынесен в отдельный класс для переиспользования
+    Детектор типов сущностей (физлицо или организация)
     """
-    
-    # Паттерны для представительств РФ
-    RF_PATTERNS = [
-        r'Российская\s+Федерация',
-        r'РФ',
-        r'Российской\s+Федерации',
-    ]
-    
-    # Признаки ФОИВ/госструктур
-    GOV_INDICATORS = [
-        'Министерство',
-        'Федеральное агентство',
-        'Федеральная служба',
-        'Госкорпорация',
-        'Государственная корпорация',
-        'Росатом',
-        'Роскосмос',
-        'Государственное предприятие',
-        'Государственный комитет',
-        'Администрация',
-        'Правительство',
-        'Совет Министров',
-        'Министерство обороны',
-        'МВД',
-        'МЧС',
-        'ФСБ',
-        'Минздрав',
-        'Минобрнауки',
-        'Минкультуры',
-        'Минприроды',
-        'Минпромторг',
-        'Минсельхоз',
-        'Минтранс',
-        'Минтруд',
-        'Минфин',
-        'Минцифры',
-        'Росстандарт',
-        'Россельхознадзор',
-        'Росрыболовство',
-        'ФНС',
-        'ФТС',
-        'Казначейство',
-        'Росимущество',
-        'Роскомнадзор',
-        'Роспатент',
-        'Росстат',
-        'Росреестр',
-        'Роспотребнадзор',
-        'ФАС',
-    ]
-    
-    # Признаки организаций
-    ORG_INDICATORS = [
-        'ООО', 'ЗАО', 'ОАО', 'АО', 'ПАО', 'ФГУП', 'ФГБУ', 'ТОО', 'ИЧП',
-        'Общество с ограниченной ответственностью',
-        'Открытое акционерное общество',
-        'Закрытое акционерное общество',
-        'Федеральное государственное унитарное предприятие',
-        'Федеральное государственное бюджетное учреждение',
-        'Федеральное государственное автономное образовательное учреждение',
-        'Акционерное общество',
-        'Корпорация', 'Холдинг', 'Концерн',
-        'Институт', 'Университет', 'Академия',
-        'Завод', 'Комбинат', 'Фабрика',
-        'Лаборатория', 'Фирма', 'Центр', 'Бюро', 'Трест',
-        'НИИ', 'КБ', 'ПО', 'НПО', 'МНТК', 'АОЗТ',
-        'Company', 'Corporation', 'Inc', 'Ltd', 'AG', 'GmbH', 'NV', 'SA', 'BV',
-        'ИНК', 'ЛТД', 'ЛИМИТЕД',
-    ]
     
     # Паттерны для русских ФИО
     RUSSIAN_NAME_PATTERNS = [
@@ -111,52 +130,18 @@ class EntityTypeDetector:
         r'^[А-ЯЁ]\.[А-ЯЁ]\.\s+[А-ЯЁ][а-яё]+',  # И.И. Иванов
     ]
     
-    @classmethod
-    def is_rf_representation(cls, text: str) -> bool:
-        """Проверка, является ли текст представительством РФ"""
-        if not text:
-            return False
-        text_lower = text.lower()
-        return any(re.search(pattern, text_lower, re.IGNORECASE) for pattern in cls.RF_PATTERNS)
-    
-    @classmethod
-    def is_foiv(cls, text: str) -> bool:
-        """Проверка, является ли текст ФОИВ/госструктурой"""
-        if not text:
-            return False
-        text_lower = text.lower()
-        return any(indicator.lower() in text_lower for indicator in cls.GOV_INDICATORS)
-    
-    @classmethod
-    def is_organization(cls, text: str) -> bool:
-        """Проверка, является ли текст организацией"""
-        if not text:
-            return False
-        
-        text_lower = text.lower()
-        
-        # Проверка по индикаторам
-        if any(indicator.lower() in text_lower for indicator in cls.ORG_INDICATORS):
-            return True
-        
-        # Проверка на код страны в скобках
-        if re.search(r'\([A-Z]{2}\)', text):
-            return True
-        
-        # Если есть запятая и похоже на юридический адрес
-        if ',' in text and len(text.split(',')) >= 2:
-            return True
-        
-        return False
+    # Паттерны для иностранных ФИО
+    FOREIGN_NAME_PATTERNS = [
+        r'^[A-Za-z]+\s+[A-Za-z]+$',  # John Smith
+        r'^[A-Za-z]+\s+[A-Za-z]+\s+[A-Za-z]+$',  # John Robert Smith
+        r'^[A-Za-z]+\s+[A-Z]\.\s*[A-Z]\.$',  # Smith J.R.
+        r'^[A-Z]\.\s*[A-Z]\.\s+[A-Za-z]+$',  # J.R. Smith
+    ]
     
     @classmethod
     def is_person(cls, text: str) -> bool:
         """Проверка, является ли текст физическим лицом"""
         if not text or len(text) < 6:
-            return False
-        
-        # Если есть признаки организации или ФОИВ - не физлицо
-        if cls.is_organization(text) or cls.is_foiv(text) or cls.is_rf_representation(text):
             return False
         
         text = text.strip()
@@ -166,12 +151,10 @@ class EntityTypeDetector:
             if re.match(pattern, text, re.UNICODE):
                 return True
         
-        # Паттерны для иностранных ФИО
-        if re.match(r'^[A-Za-z]+\s+[A-Za-z]+$', text):  # John Smith
-            return True
-        
-        if re.match(r'^[A-Za-z]+\s+[A-Za-z]+\s+[A-Za-z]+$', text):  # John Robert Smith
-            return True
+        # Проверка по паттернам иностранных ФИО
+        for pattern in cls.FOREIGN_NAME_PATTERNS:
+            if re.match(pattern, text):
+                return True
         
         # Фамилия, Имя через запятую (иностранный формат)
         if ',' in text:
@@ -179,8 +162,9 @@ class EntityTypeDetector:
             if len(parts) == 2:
                 name_part = parts[0].strip()
                 surname_part = parts[1].strip()
-                if (len(name_part.split()) <= 2 and len(surname_part.split()) <= 2 and
-                    not any(c in name_part+surname_part for c in ['ООО', 'АО', 'ЗАО', 'Ltd', 'Inc'])):
+                if (len(name_part.split()) <= 2 and 
+                    len(surname_part.split()) <= 2 and
+                    not any(x in text for x in ['ООО', 'АО', 'ЗАО', 'Ltd', 'Inc'])):
                     return True
         
         return False
@@ -189,18 +173,11 @@ class EntityTypeDetector:
     def detect_type(cls, text: str) -> str:
         """
         Определение типа сущности
-        Возвращает: 'rf_representation', 'foiv', 'organization', 'person', 'unknown'
+        Возвращает: 'person' или 'organization'
         """
-        if cls.is_rf_representation(text):
-            return 'rf_representation'
-        elif cls.is_foiv(text):
-            return 'foiv'
-        elif cls.is_organization(text):
-            return 'organization'
-        elif cls.is_person(text):
+        if cls.is_person(text):
             return 'person'
-        else:
-            return 'unknown'
+        return 'organization'
 
 
 class BaseFIPSParser:
@@ -221,9 +198,12 @@ class BaseFIPSParser:
         self.foiv_cache = {}
         self.rf_rep_cache = {}
         self.city_cache = {}
+        self.activity_type_cache = {}
+        self.ceo_position_cache = {}
         
-        # Детектор типов
+        # Детектор типов и нормализатор
         self.type_detector = EntityTypeDetector()
+        self.org_normalizer = OrganizationNormalizer()
     
     def get_ip_type(self):
         """Должен быть переопределен в дочерних классах"""
@@ -255,14 +235,12 @@ class BaseFIPSParser:
         if not date_str:
             return None
         
-        # Пробуем разные форматы
         for fmt in ['%Y%m%d', '%Y-%m-%d', '%d.%m.%Y', '%Y/%m/%d']:
             try:
                 return datetime.strptime(date_str, fmt).date()
             except (ValueError, TypeError):
                 continue
         
-        # Пробуем автоматическое определение
         try:
             return pd.to_datetime(date_str).date()
         except (ValueError, TypeError):
@@ -274,12 +252,74 @@ class BaseFIPSParser:
             return False
         
         value = str(value).lower().strip()
-        return value in ['1', 'true', 'yes', 'да', 'действует', 'true', 't', '1.0', 'активен']
+        return value in ['1', 'true', 'yes', 'да', 'действует', 't', '1.0', 'активен']
+    
+    def format_organization_name(self, name):
+        """
+        Приводит название организации к правильному регистру
+        ООО "РОМАШКА" -> ООО "Ромашка"
+        ФГУП "ВНИИ "ЦЕНТР" -> ФГУП "ВНИИ "Центр"
+        """
+        if not name:
+            return name
+        
+        # Список аббревиатур, которые должны оставаться в верхнем регистре
+        KEEP_UPPER = [
+            'ООО', 'ЗАО', 'ОАО', 'АО', 'ПАО', 'НАО',
+            'ФГУП', 'ФГБУ', 'ФГАОУ', 'ФГАУ', 'ФГКУ',
+            'НИИ', 'КБ', 'ОКБ', 'СКБ', 'ЦКБ', 'ПКБ',
+            'НПО', 'НПП', 'НПФ', 'НПЦ', 'НИЦ',
+            'МУП', 'ГУП', 'ИЧП', 'ТОО', 'АОЗТ', 'АООТ',
+            'РФ', 'РАН', 'СО РАН', 'УрО РАН', 'ДВО РАН',
+            'МГУ', 'СПбГУ', 'МФТИ', 'МИФИ', 'МГТУ', 'МАИ',
+            'ФИАН', 'МИАН', 'ИПМ', 'ИПМех', 'ИППИ',
+            'ЦАГИ', 'ЦИАМ', 'ВИАМ', 'ВИЛС', 'ВИМС'
+        ]
+        
+        # Разбиваем на части по кавычкам
+        parts = re.split(r'(")', name)
+        result = []
+        in_quotes = False
+        
+        for i, part in enumerate(parts):
+            if part == '"':
+                in_quotes = not in_quotes
+                result.append(part)
+            elif in_quotes:
+                # Часть внутри кавычек - форматируем как обычный текст
+                words = part.split()
+                formatted_words = []
+                for word in words:
+                    if word.upper() in KEEP_UPPER:
+                        formatted_words.append(word.upper())
+                    elif word.isupper() and len(word) > 1:
+                        # Предполагаем, что это аббревиатура
+                        formatted_words.append(word.upper())
+                    else:
+                        # Обычное слово с заглавной буквы
+                        formatted_words.append(word[0].upper() + word[1:].lower())
+                result.append(' '.join(formatted_words))
+            else:
+                # Часть вне кавычек - форматируем аббревиатуры
+                words = part.split()
+                formatted_words = []
+                for word in words:
+                    word_clean = word.strip('.,;:()')
+                    if word_clean.upper() in KEEP_UPPER:
+                        formatted_words.append(word_clean.upper())
+                    elif word_clean.isupper() and len(word_clean) > 1:
+                        formatted_words.append(word_clean.upper())
+                    else:
+                        formatted_words.append(word)
+                result.append(' '.join(formatted_words))
+        
+        return ''.join(result)
     
     def normalize_name_case(self, name):
         """
-        Приводит имя к правильному регистру:
+        Приводит имя человека к правильному регистру:
         ФОМИН АРТЕМ ВЛАДИМИРОВИЧ -> Фомин Артем Владимирович
+        ИВАНОВ И.И. -> Иванов И.И.
         """
         if not name:
             return name
@@ -301,16 +341,6 @@ class BaseFIPSParser:
         
         return ' '.join(normalized_parts)
     
-    def normalize_text(self, text):
-        """Нормализация текста для поиска"""
-        if not text:
-            return text
-        # Приводим к нижнему регистру, убираем лишние пробелы
-        text = ' '.join(text.lower().split())
-        # Убираем кавычки и скобки
-        text = re.sub(r'["\'\(\)]', '', text)
-        return text
-    
     def get_or_create_country(self, code):
         """Получение или создание страны по коду"""
         if not code or pd.isna(code):
@@ -323,18 +353,17 @@ class BaseFIPSParser:
         if code in self.country_cache:
             return self.country_cache[code]
         
-        # Словарь для преобразования кодов в названия
         country_names = {
-            'RU': ('Россия', 'Russia', 'РФ'),
-            'US': ('США', 'USA', 'United States'),
-            'DE': ('Германия', 'Germany', 'DE'),
-            'FR': ('Франция', 'France', 'FR'),
-            'GB': ('Великобритания', 'United Kingdom', 'GB'),
-            'CN': ('Китай', 'China', 'CN'),
-            'JP': ('Япония', 'Japan', 'JP'),
-            'KZ': ('Казахстан', 'Kazakhstan', 'KZ'),
-            'BY': ('Беларусь', 'Belarus', 'BY'),
-            'UA': ('Украина', 'Ukraine', 'UA'),
+            'RU': ('Россия', 'Russia'),
+            'US': ('США', 'USA'),
+            'DE': ('Германия', 'Germany'),
+            'FR': ('Франция', 'France'),
+            'GB': ('Великобритания', 'United Kingdom'),
+            'CN': ('Китай', 'China'),
+            'JP': ('Япония', 'Japan'),
+            'KZ': ('Казахстан', 'Kazakhstan'),
+            'BY': ('Беларусь', 'Belarus'),
+            'UA': ('Украина', 'Ukraine'),
         }
         
         try:
@@ -497,21 +526,88 @@ class BaseFIPSParser:
         
         return self.find_or_create_person(person_data)
     
+    def find_similar_organization(self, org_name):
+        """
+        Поиск похожей организации с использованием всех трех полей названия
+        """
+        if pd.isna(org_name) or not org_name:
+            return None
+        
+        org_name = str(org_name).strip().strip('"')
+        
+        # Стратегия 1: Прямое совпадение с любым из полей названия
+        direct_match = Organization.objects.filter(
+            models.Q(name=org_name) |
+            models.Q(full_name=org_name) |
+            models.Q(short_name=org_name)
+        ).first()
+        if direct_match:
+            return direct_match
+        
+        # Нормализуем название для дальнейшего поиска
+        norm_data = self.org_normalizer.normalize(org_name)
+        normalized = norm_data['normalized']
+        keywords = norm_data['keywords']
+        
+        # Стратегия 2: Поиск по ключевым словам во всех полях
+        for keyword in keywords:
+            if len(keyword) >= 3:
+                similar = Organization.objects.filter(
+                    models.Q(name__icontains=keyword) |
+                    models.Q(full_name__icontains=keyword) |
+                    models.Q(short_name__icontains=keyword)
+                ).first()
+                if similar:
+                    return similar
+        
+        # Стратегия 3: Поиск по первым 30 символам нормализованного названия
+        if len(normalized) > 30:
+            prefix = normalized[:30]
+            similar = Organization.objects.filter(
+                models.Q(name__icontains=prefix) |
+                models.Q(full_name__icontains=prefix) |
+                models.Q(short_name__icontains=prefix)
+            ).first()
+            if similar:
+                return similar
+        
+        # Стратегия 4: Поиск по вхождению оригинального названия в full_name
+        full_match = Organization.objects.filter(
+            models.Q(full_name__icontains=org_name)
+        ).first()
+        if full_match:
+            return full_match
+        
+        return None
+    
     def find_or_create_organization(self, org_name):
         """Поиск или создание организации"""
         if pd.isna(org_name) or not org_name:
             return None
         
-        org_name = str(org_name).strip()
-        org_name = org_name.strip('"')
+        org_name = str(org_name).strip().strip('"')
         
         if not org_name or org_name == 'null' or org_name == 'None':
             return None
         
+        # Проверяем кэш
         if org_name in self.organization_cache:
             return self.organization_cache[org_name]
         
-        base_slug = slugify(org_name[:50])
+        # Ищем похожие организации
+        similar = self.find_similar_organization(org_name)
+        if similar:
+            self.organization_cache[org_name] = similar
+            return similar
+        
+        # Форматируем название перед сохранением
+        formatted_name = self.format_organization_name(org_name)
+        
+        # Нормализуем для генерации slug
+        norm_data = self.org_normalizer.normalize(org_name)
+        normalized = norm_data['normalized']
+        
+        base_slug = slugify(normalized[:50])
         if not base_slug:
             base_slug = 'organization'
         
@@ -525,17 +621,15 @@ class BaseFIPSParser:
             max_id = Organization.objects.aggregate(models.Max('organization_id'))['organization_id__max'] or 0
             new_id = max_id + 1
             
-            org, created = Organization.objects.get_or_create(
-                name=org_name,
-                defaults={
-                    'organization_id': new_id,
-                    'name': org_name,
-                    'full_name': org_name,
-                    'short_name': org_name[:500] if len(org_name) > 500 else org_name,
-                    'slug': unique_slug,
-                    'register_opk': False,
-                    'strategic': False,
-                }
+            # Создаем организацию с отформатированным названием
+            org = Organization.objects.create(
+                organization_id=new_id,
+                name=formatted_name,
+                full_name=formatted_name,
+                short_name=formatted_name[:500] if len(formatted_name) > 500 else formatted_name,
+                slug=unique_slug,
+                register_opk=False,
+                strategic=False,
             )
             
             self.organization_cache[org_name] = org
@@ -574,14 +668,11 @@ class BaseFIPSParser:
     def find_or_create_rf_representative(self, holder_text, foiv=None):
         """
         Поиск или создание представительства РФ
-        Если передан foiv - создаем новую связь
-        Если не передан - ищем по тексту
         """
         if pd.isna(holder_text) or not holder_text:
             return None
         
         holder_text = str(holder_text).strip().strip('"')
-        normalized = self.normalize_text(holder_text)
         
         # Проверяем кэш
         cache_key = f"{holder_text}|{foiv.pk if foiv else ''}"
@@ -591,12 +682,6 @@ class BaseFIPSParser:
         try:
             # Сначала точный поиск по полному тексту
             rf_rep = RFRepresentative.objects.filter(full_text=holder_text).first()
-            if rf_rep:
-                self.rf_rep_cache[cache_key] = rf_rep.foiv
-                return rf_rep.foiv
-            
-            # Поиск по нормализованному тексту
-            rf_rep = RFRepresentative.objects.filter(search_text__icontains=normalized[:100]).first()
             if rf_rep:
                 self.rf_rep_cache[cache_key] = rf_rep.foiv
                 return rf_rep.foiv
@@ -618,61 +703,34 @@ class BaseFIPSParser:
         
         return None
     
-    def process_entity(self, entity_name, ip_object, entity_type=None):
+    def process_entity(self, entity_name, ip_object):
         """
-        Универсальный метод обработки сущности
-        entity_type может быть 'rf_representation', 'foiv', 'organization', 'person', None (auto-detect)
+        Упрощенный метод обработки сущности
+        Все, что не физлицо - организация
         """
         if pd.isna(entity_name) or not entity_name:
             return False
         
-        if entity_type is None:
-            entity_type = self.type_detector.detect_type(entity_name)
+        entity_type = self.type_detector.detect_type(entity_name)
         
-        self.stdout.write(f"           Определен тип: {entity_type}")
-        
-        if entity_type == 'rf_representation':
-            # Сначала пробуем найти ФОИВ в тексте
-            foiv = self.find_or_create_foiv(entity_name)
-            if foiv:
-                # Создаем или получаем представительство РФ
-                rf_foiv = self.find_or_create_rf_representative(entity_name, foiv)
-                if rf_foiv:
-                    ip_object.owner_foivs.add(rf_foiv)
-                    self.stdout.write(f"        ✅ РФ в лице: {foiv.short_name}")
-                    return True
-            else:
-                self.stdout.write(f"        ⚠️ ФОИВ не найден для представительства РФ")
-                return False
-        
-        elif entity_type == 'foiv':
-            foiv = self.find_or_create_foiv(entity_name)
-            if foiv:
-                ip_object.owner_foivs.add(foiv)
-                self.stdout.write(f"        ✅ ФОИВ: {foiv.short_name}")
+        if entity_type == 'person':
+            person = self.find_or_create_person_from_name(entity_name)
+            if person:
+                ip_object.owner_persons.add(person)
+                self.stdout.write(f"        ✅ Физлицо: {person.get_full_name()}")
                 return True
-            else:
-                self.stdout.write(f"        ⚠️ ФОИВ не найден в БД")
-                return False
-        
-        elif entity_type == 'organization':
+        else:
+            # Все остальное - организация
             org = self.find_or_create_organization(entity_name)
             if org:
                 ip_object.owner_organizations.add(org)
                 self.stdout.write(f"        ✅ Организация: {org.name[:50]}...")
                 return True
         
-        elif entity_type == 'person':
-            person = self.find_or_create_person_from_name(entity_name)
-            if person:
-                ip_object.owner_persons.add(person)
-                self.stdout.write(f"        ✅ Физлицо: {person.get_full_name()}")
-                return True
-        
         return False
     
     def process_holders(self, holders_list, ip_object):
-        """Универсальная обработка списка патентообладателей"""
+        """Обработка списка патентообладателей"""
         if not holders_list:
             return
         
@@ -886,7 +944,6 @@ class UtilityModelParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер полезных моделей готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
@@ -901,7 +958,6 @@ class IndustrialDesignParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер промышленных образцов готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
@@ -916,7 +972,6 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер топологий микросхем готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
@@ -931,7 +986,6 @@ class ComputerProgramParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер программ для ЭВМ готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
@@ -946,7 +1000,6 @@ class DatabaseParser(BaseFIPSParser):
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  Парсер баз данных готов к работе"))
-        # TODO: Реализовать логику парсинга
         return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
 
 
@@ -1190,7 +1243,7 @@ class Command(BaseCommand):
             if pd.isna(value) or not value:
                 return False
             value = str(value).lower().strip()
-            return value in ['1', 'true', 'yes', 'да', 'действует', 'true', 't', '1.0', 'активен']
+            return value in ['1', 'true', 'yes', 'да', 'действует', 't', '1.0', 'активен']
         
         df['_actual'] = df['actual'].apply(parse_actual)
         filtered_df = df[df['_actual'] == True].copy()
