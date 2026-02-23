@@ -17,35 +17,12 @@ from tqdm import tqdm
 import pandas as pd
 import os
 
-# Попытка импорта pymorphy2 с обработкой ошибок
-try:
-    import pkg_resources  # Важно: импортируем сначала pkg_resources
-    import pymorphy2
-    from pymorphy2 import MorphAnalyzer
-    PYTMORPHY_AVAILABLE = True
-except (ImportError, ModuleNotFoundError) as e:
-    PYTMORPHY_AVAILABLE = False
-    print(f"⚠️ pymorphy2 не доступен ({e}), используется упрощенная обработка текста")
-    
-    # Заглушки для pymorphy2
-    class SimpleTag:
-        def __init__(self, word): 
-            self.word = word
-        def __contains__(self, item): 
-            return False
-        def __str__(self): 
-            return ''
-    
-    class SimpleParse:
-        def __init__(self, word): 
-            self.word = word
-            self.tag = SimpleTag(word)
-    
-    class SimpleMorph:
-        def parse(self, word): 
-            return [SimpleParse(word)]
-    
-    MorphAnalyzer = SimpleMorph
+# Импорты natasha
+from natasha import (
+    Segmenter, MorphVocab, NewsEmbedding, NewsMorphTagger,
+    NewsSyntaxParser, NewsNERTagger, NamesExtractor, AddrExtractor,
+    Doc, spans
+)
 
 from intellectual_property.models import (
     FipsOpenDataCatalogue, IPType, ProtectionDocumentType,
@@ -62,123 +39,180 @@ from common.utils.dates import DateUtils
 logger = logging.getLogger(__name__)
 
 
-class MorphAnalyzerWrapper:
+class NatashaWrapper:
     """
-    Обертка для pymorphy2 с кэшированием результатов
-    Если pymorphy2 недоступен, использует упрощенную логику
+    Обертка для библиотеки natasha с кэшированием результатов
     """
     _instance = None
     _cache = {}
     
-    # Список предлогов и союзов для упрощенной логики
-    PREPOSITIONS = {
-        'в', 'на', 'с', 'со', 'у', 'к', 'ко', 'о', 'об', 'от', 'до',
-        'для', 'без', 'над', 'под', 'из', 'по', 'за', 'про', 'через',
-        'и', 'а', 'но', 'да', 'или', 'либо', 'же', 'как', 'так',
-        'что', 'чтобы', 'если', 'хотя', 'при', 'во', 'обо', 'из-за', 'из-под',
-        'and', 'or', 'but', 'if', 'then', 'else', 'for', 'to', 'with',
-        'by', 'from', 'at', 'in', 'on', 'of', 'the', 'a', 'an',
-    }
-    
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            if PYTMORPHY_AVAILABLE:
-                try:
-                    cls._instance.morph = pymorphy2.MorphAnalyzer()
-                except Exception as e:
-                    print(f"⚠️ Ошибка инициализации pymorphy2: {e}, используется упрощенная логика")
-                    cls._instance.morph = SimpleMorph()
-            else:
-                cls._instance.morph = SimpleMorph()
+            cls._instance._initialize()
         return cls._instance
     
-    def parse(self, word: str):
-        """Разбор слова с кэшированием"""
-        if not word:
-            return []
-        if word in self._cache:
-            return self._cache[word]
+    def _initialize(self):
+        """Инициализация компонентов natasha"""
         try:
-            result = self.morph.parse(word)
-            self._cache[word] = result
-            return result
-        except Exception:
+            self.segmenter = Segmenter()
+            self.morph_vocab = MorphVocab()
+            self.emb = NewsEmbedding()
+            self.morph_tagger = NewsMorphTagger(self.emb)
+            self.syntax_parser = NewsSyntaxParser(self.emb)
+            self.ner_tagger = NewsNERTagger(self.emb)
+            self.names_extractor = NamesExtractor(self.morph_vocab)
+            self.addr_extractor = AddrExtractor(self.morph_vocab)
+            self.initialized = True
+        except Exception as e:
+            print(f"⚠️ Ошибка инициализации natasha: {e}")
+            self.initialized = False
+    
+    def process_text(self, text: str) -> Doc:
+        """Полный анализ текста"""
+        if not text or not self.initialized:
+            return None
+        
+        if text in self._cache:
+            return self._cache[text]
+        
+        doc = Doc(text)
+        doc.segment(self.segmenter)
+        doc.tag_morph(self.morph_tagger)
+        doc.parse_syntax(self.syntax_parser)
+        doc.tag_ner(self.ner_tagger)
+        
+        for span in doc.spans:
+            span.normalize(self.morph_vocab)
+        
+        self._cache[text] = doc
+        return doc
+    
+    def is_person(self, text: str) -> bool:
+        """Определение, является ли текст именем человека"""
+        if not text or not self.initialized:
+            return self._simple_is_person(text)
+        
+        doc = self.process_text(text)
+        if doc and doc.spans:
+            # Если есть именованные сущности типа PER
+            for span in doc.spans:
+                if span.type == 'PER':
+                    return True
+        
+        return self._simple_is_person(text)
+    
+    def is_organization(self, text: str) -> bool:
+        """Определение, является ли текст названием организации"""
+        if not text or not self.initialized:
+            return self._simple_is_organization(text)
+        
+        doc = self.process_text(text)
+        if doc and doc.spans:
+            # Если есть именованные сущности типа ORG
+            for span in doc.spans:
+                if span.type == 'ORG':
+                    return True
+        
+        return self._simple_is_organization(text)
+    
+    def is_location(self, text: str) -> bool:
+        """Определение, является ли текст названием места"""
+        if not text or not self.initialized:
+            return False
+        
+        doc = self.process_text(text)
+        if doc and doc.spans:
+            for span in doc.spans:
+                if span.type in ['LOC', 'ORG']:
+                    return True
+        return False
+    
+    def extract_names(self, text: str) -> List[Dict]:
+        """Извлечение имен из текста"""
+        if not text or not self.initialized:
             return []
+        
+        matches = self.names_extractor(text)
+        return [
+            {
+                'first': match.fact.first,
+                'last': match.fact.last,
+                'middle': match.fact.middle,
+                'full': match.fact.as_string
+            }
+            for match in matches
+        ]
     
-    def is_name(self, word: str) -> bool:
-        """Проверка, является ли слово именем собственным"""
-        if not word or len(word) < 2:
+    def normalize_name_case(self, text: str) -> str:
+        """
+        Приведение имени к правильному регистру
+        """
+        if not text:
+            return text
+        
+        # Разбиваем на части
+        parts = re.split(r'(\s+)', text)
+        result = []
+        
+        for part in parts:
+            if part.isspace():
+                result.append(part)
+                continue
+            
+            # Обработка инициалов
+            if re.match(r'^[А-ЯЁA-Z]\.$', part):
+                result.append(part.upper())
+                continue
+            
+            if re.match(r'^[А-ЯЁA-Z]\.[А-ЯЁA-Z]\.$', part):
+                result.append(part.upper())
+                continue
+            
+            # Обычные слова
+            if part and len(part) > 0:
+                if part.isupper() and len(part) > 1:
+                    # Вероятно, фамилия в верхнем регистре
+                    result.append(part[0].upper() + part[1:].lower())
+                else:
+                    result.append(part)
+        
+        return ''.join(result)
+    
+    def _simple_is_person(self, text: str) -> bool:
+        """Упрощенная проверка на физлицо"""
+        if not text or len(text) < 6:
             return False
         
-        if PYTMORPHY_AVAILABLE:
-            try:
-                parsed = self.parse(word)
-                if parsed and len(parsed) > 0:
-                    tags = str(parsed[0].tag)
-                    return any(tag in tags for tag in ['Name', 'Surn', 'Patr'])
-            except Exception:
-                pass
+        # Признаки организации
+        org_indicators = ['ООО', 'ЗАО', 'АО', 'ПАО', 'ФГУП', 'ФГБУ', 
+                         'Общество', 'Компания', 'Корпорация', 'Завод', 'Институт']
         
-        # Упрощенная логика: слова с большой буквы, не предлоги
-        return word[0].isupper() and word.lower() not in self.PREPOSITIONS
-    
-    def is_preposition(self, word: str) -> bool:
-        """Проверка, является ли слово предлогом/союзом"""
-        if not word:
+        if any(ind in text for ind in org_indicators):
             return False
         
-        if PYTMORPHY_AVAILABLE:
-            try:
-                parsed = self.parse(word)
-                if parsed and len(parsed) > 0:
-                    return 'PREP' in str(parsed[0].tag) or 'CONJ' in str(parsed[0].tag)
-            except Exception:
-                pass
+        # Паттерны ФИО
+        words = text.split()
+        if 2 <= len(words) <= 4:
+            # Проверяем, что слова выглядят как имена
+            name_like = 0
+            for word in words:
+                clean = word.rstrip('.,')
+                if clean and clean[0].isupper() and len(clean) > 1:
+                    name_like += 1
+            return name_like >= len(words) - 1
         
-        # Упрощенная логика: проверка по списку
-        return word.lower() in self.PREPOSITIONS
+        return False
     
-    def normalize_case(self, word: str, is_first: bool = False) -> str:
-        """
-        Приведение слова к правильному регистру
-        """
-        if not word or len(word) <= 1:
-            return word
+    def _simple_is_organization(self, text: str) -> bool:
+        """Упрощенная проверка на организацию"""
+        if not text:
+            return False
         
-        # Если слово в верхнем регистре и длинное - возможно аббревиатура
-        if word.isupper() and len(word) > 1:
-            return word
+        org_indicators = ['ООО', 'ЗАО', 'АО', 'ПАО', 'ФГУП', 'ФГБУ', 
+                         'Общество', 'Компания', 'Корпорация', 'Завод', 'Институт']
         
-        # Если слово содержит только одну букву (инициал)
-        if len(word) == 1:
-            return word.upper() + '.'
-        
-        # Очищаем от знаков препинания для анализа
-        clean_word = re.sub(r'[.,;:!?()\[\]{}"\']', '', word)
-        if not clean_word:
-            return word
-        
-        # Определяем регистр
-        if is_first:
-            # Первое слово - с большой буквы
-            result = clean_word[0].upper() + clean_word[1:].lower()
-        elif self.is_name(clean_word):
-            # Имена собственные - с большой буквы
-            result = clean_word[0].upper() + clean_word[1:].lower()
-        elif self.is_preposition(clean_word):
-            # Предлоги и союзы - с маленькой буквы
-            result = clean_word.lower()
-        else:
-            # Обычные слова - с маленькой буквы
-            result = clean_word.lower()
-        
-        # Добавляем обратно знаки препинания
-        if word != clean_word:
-            punctuation = word[len(clean_word):]
-            result += punctuation
-        
-        return result
+        return any(ind in text for ind in org_indicators)
 
 
 class OrganizationNormalizer:
@@ -188,7 +222,7 @@ class OrganizationNormalizer:
     
     def __init__(self):
         self.rules_cache = None
-        self.morph = MorphAnalyzerWrapper()
+        self.natasha = NatashaWrapper()
         self.load_rules()
     
     def load_rules(self):
@@ -310,8 +344,8 @@ class OrganizationNormalizer:
                     word_upper = word.upper()
                     if word_upper in ALWAYS_UPPER:
                         formatted_words.append(word_upper)
-                    elif self.morph.is_name(word):
-                        # Имена собственные - с большой буквы
+                    elif self.natasha.is_location(word):
+                        # Географические названия - с большой буквы
                         formatted_words.append(word[0].upper() + word[1:].lower())
                     else:
                         # Обычные слова - с маленькой буквы
@@ -337,64 +371,13 @@ class OrganizationNormalizer:
         return ''.join(result)
 
 
-class EntityTypeDetector:
-    """
-    Детектор типов сущностей с использованием морфологического анализа
-    """
-    
-    def __init__(self):
-        self.morph = MorphAnalyzerWrapper()
-    
-    def is_person(self, text: str) -> bool:
-        """
-        Проверка, является ли текст физическим лицом
-        Использует морфологический анализ для определения имен собственных
-        """
-        if not text or len(text) < 6:
-            return False
-        
-        text = text.strip()
-        
-        # Если есть явные признаки организации - сразу возвращаем False
-        org_indicators = ['ООО', 'ЗАО', 'АО', 'ПАО', 'ФГУП', 'ФГБУ', 
-                         'Общество', 'Компания', 'Корпорация', 'Завод', 'Институт']
-        if any(ind in text for ind in org_indicators):
-            return False
-        
-        # Разбиваем на слова
-        words = re.findall(r'[А-ЯЁA-Z][а-яёa-z]*\.?', text)
-        
-        # Если слов меньше 2 - не ФИО
-        if len(words) < 2:
-            return False
-        
-        # Проверяем каждое слово на принадлежность к именам
-        name_count = 0
-        for word in words:
-            clean_word = word.rstrip('.')
-            if self.morph.is_name(clean_word):
-                name_count += 1
-        
-        # Если большинство слов - имена, вероятно это ФИО
-        return name_count >= len(words) - 1
-    
-    def detect_type(self, text: str) -> str:
-        """
-        Определение типа сущности
-        Возвращает: 'person' или 'organization'
-        """
-        if self.is_person(text):
-            return 'person'
-        return 'organization'
-
-
 class RIDNameFormatter:
     """
-    Класс для форматирования названий РИД с использованием морфологического анализа
+    Класс для форматирования названий РИД с использованием natasha
     """
     
     def __init__(self):
-        self.morph = MorphAnalyzerWrapper()
+        self.natasha = NatashaWrapper()
         
         # Аббревиатуры, которые всегда остаются в верхнем регистре
         self.KEEP_UPPER = {
@@ -434,6 +417,9 @@ class RIDNameFormatter:
         if len(text.strip()) <= 1:
             return text
         
+        # Анализируем текст через natasha для выделения именованных сущностей
+        doc = self.natasha.process_text(text)
+        
         # Разбиваем на предложения
         sentences = re.split(r'(?<=[.!?])\s+(?=[А-ЯЁA-Z])', text)
         formatted_sentences = []
@@ -455,7 +441,7 @@ class RIDNameFormatter:
                     continue
                 
                 # Обрабатываем слово
-                formatted_word = self._format_word(word, is_first_word)
+                formatted_word = self._format_word(word, is_first_word, doc)
                 formatted_words.append(formatted_word)
                 
                 # Следующее слово не будет первым в предложении
@@ -472,7 +458,7 @@ class RIDNameFormatter:
         
         return result
     
-    def _format_word(self, word: str, is_first: bool) -> str:
+    def _format_word(self, word: str, is_first: bool, doc=None) -> str:
         """
         Форматирование отдельного слова
         """
@@ -503,19 +489,43 @@ class RIDNameFormatter:
             parts = word.split('-')
             formatted_parts = []
             for part in parts:
-                formatted_parts.append(self._format_word(part, False))
+                formatted_parts.append(self._format_word(part, False, doc))
             return '-'.join(formatted_parts)
         
-        return self.morph.normalize_case(word, is_first)
+        # Очистка от знаков препинания для анализа
+        clean_word = re.sub(r'[.,;:!?()]', '', word)
+        if not clean_word:
+            return word
+        
+        # Определяем регистр
+        if is_first:
+            # Первое слово - с большой буквы
+            result = clean_word[0].upper() + clean_word[1:].lower()
+        elif self.natasha.is_person(clean_word):
+            # Имена людей - с большой буквы
+            result = clean_word[0].upper() + clean_word[1:].lower()
+        elif self.natasha.is_location(clean_word):
+            # Географические названия - с большой буквы
+            result = clean_word[0].upper() + clean_word[1:].lower()
+        else:
+            # Обычные слова - с маленькой буквы
+            result = clean_word.lower()
+        
+        # Добавляем обратно знаки препинания
+        if word != clean_word:
+            punctuation = word[len(clean_word):]
+            result += punctuation
+        
+        return result
 
 
 class PersonNameFormatter:
     """
-    Класс для форматирования имен людей
+    Класс для форматирования имен людей с использованием natasha
     """
     
     def __init__(self):
-        self.morph = MorphAnalyzerWrapper()
+        self.natasha = NatashaWrapper()
     
     def format(self, name: str) -> str:
         """
@@ -525,6 +535,22 @@ class PersonNameFormatter:
         if not name:
             return name
         
+        # Пробуем извлечь структурированное имя через natasha
+        extracted = self.natasha.extract_names(name)
+        if extracted:
+            # Используем извлеченное имя
+            name_data = extracted[0]
+            parts = []
+            if name_data['last']:
+                parts.append(self._format_part(name_data['last']))
+            if name_data['first']:
+                parts.append(self._format_part(name_data['first']))
+            if name_data['middle']:
+                parts.append(self._format_part(name_data['middle']))
+            if parts:
+                return ' '.join(parts)
+        
+        # Если не удалось извлечь, форматируем вручную
         parts = name.split()
         formatted_parts = []
         
@@ -539,9 +565,39 @@ class PersonNameFormatter:
                 continue
             
             # Обычное слово
-            formatted_parts.append(self.morph.normalize_case(part, True))
+            if part.isupper() and len(part) > 1:
+                # Вероятно, фамилия или имя в верхнем регистре
+                formatted_parts.append(part[0].upper() + part[1:].lower())
+            else:
+                formatted_parts.append(part)
         
         return ' '.join(formatted_parts)
+    
+    def _format_part(self, part: str) -> str:
+        """Форматирование части ФИО"""
+        if not part:
+            return part
+        if len(part) == 1:
+            return part.upper() + '.'
+        return part[0].upper() + part[1:].lower()
+
+
+class EntityTypeDetector:
+    """
+    Детектор типов сущностей с использованием natasha
+    """
+    
+    def __init__(self):
+        self.natasha = NatashaWrapper()
+    
+    def detect_type(self, text: str) -> str:
+        """
+        Определение типа сущности
+        Возвращает: 'person' или 'organization'
+        """
+        if self.natasha.is_person(text):
+            return 'person'
+        return 'organization'
 
 
 class BaseFIPSParser:
