@@ -12,6 +12,7 @@ from typing import Optional, Tuple, List, Dict, Any
 from django.db import models
 from django.core.management.base import BaseCommand, CommandError
 from django.utils.text import slugify
+from django.utils import timezone
 from tqdm import tqdm
 import pandas as pd
 import os
@@ -192,28 +193,27 @@ class BaseFIPSParser:
         'ДНК', 'РНК', 'ПЦР', 'ИФА', 'ЭДТА', 'АТФ', 'АДФ', 'НАД', 'НАДФ',
         'ГИСТОН', 'ПРОТЕИН', 'ПЕПТИД', 'ПОЛИМЕР', 'МОНОМЕР',
         'СПИН', 'ЯМР', 'ЭПР', 'ИК', 'УФ', 'ВУФ', 'ЭМИ', 'КПД',
-        'ТВЕРДОТЕЛЬНЫЙ', 'ПОЛУПРОВОДНИКОВЫЙ', 'НАНОСТРУКТУРА',
         'ЛАЗЕР', 'МАЗЕР', 'ФЕМТОСЕКУНДНЫЙ', 'ПИКОСЕКУНДНЫЙ',
         
         # Единицы измерения
-        '°C', '°F', 'K', 'м', 'см', 'мм', 'км', 'кг', 'г', 'мг', 'мкг',
-        'л', 'мл', 'мкл', 'с', 'мс', 'мкс', 'мин', 'ч', 'сут',
-        'Па', 'кПа', 'МПа', 'ГПа', 'атм', 'бар', 'мм рт. ст.',
-        'А', 'В', 'Вт', 'кВт', 'МВт', 'ГВт', 'Ом', 'Ф', 'Гн', 'Тл',
-        'бит', 'байт', 'Кб', 'Мб', 'Гб', 'Тб', 'Гц', 'кГц', 'МГц', 'ГГц',
+        '°C', '°F', 'K', 'М', 'СМ', 'ММ', 'КМ', 'КГ', 'Г', 'МГ', 'МКГ',
+        'Л', 'МЛ', 'МКЛ', 'С', 'МС', 'МКС', 'МИН', 'Ч', 'СУТ',
+        'ПА', 'КПА', 'МПА', 'ГПА', 'АТМ', 'БАР', 'ММ РТ. СТ.',
+        'А', 'В', 'ВТ', 'КВТ', 'МВТ', 'ГВТ', 'ОМ', 'Ф', 'ГН', 'ТЛ',
+        'БИТ', 'БАЙТ', 'КБ', 'МБ', 'ГБ', 'ТБ', 'ГЦ', 'КГЦ', 'МГЦ', 'ГГЦ',
         
         # Математические обозначения
-        'sin', 'cos', 'tg', 'ctg', 'arcsin', 'arccos', 'arctg', 'arcctg',
-        'lim', 'inf', 'sup', 'max', 'min', 'det', 'ker', 'dim', 'hom',
+        'SIN', 'COS', 'TG', 'CTG', 'ARCSIN', 'ARCCOS', 'ARCTG', 'ARCCTG',
+        'LIM', 'INF', 'SUP', 'MAX', 'MIN', 'DET', 'KER', 'DIM', 'HOM',
         
         # Химические элементы и соединения
-        'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', 'Mg',
-        'Al', 'Si', 'P', 'S', 'Cl', 'Ar', 'K', 'Ca', 'Sc', 'Ti', 'V',
-        'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn', 'Ga', 'Ge', 'As', 'Se',
-        'Br', 'Kr', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh',
-        'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Te', 'I', 'Xe', 'Cs', 'Ba',
-        'La', 'Ce', 'Pr', 'Nd', 'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho',
-        'Er', 'Tm', 'Yb', 'Lu', 'HCl', 'H2SO4', 'HNO3', 'H3PO4', 'NaOH',
+        'H', 'HE', 'LI', 'BE', 'B', 'C', 'N', 'O', 'F', 'NE', 'NA', 'MG',
+        'AL', 'SI', 'P', 'S', 'CL', 'AR', 'K', 'CA', 'SC', 'TI', 'V',
+        'CR', 'MN', 'FE', 'CO', 'NI', 'CU', 'ZN', 'GA', 'GE', 'AS', 'SE',
+        'BR', 'KR', 'RB', 'SR', 'Y', 'ZR', 'NB', 'MO', 'TC', 'RU', 'RH',
+        'PD', 'AG', 'CD', 'IN', 'SN', 'SB', 'TE', 'I', 'XE', 'CS', 'BA',
+        'LA', 'CE', 'PR', 'ND', 'PM', 'SM', 'EU', 'GD', 'TB', 'DY', 'HO',
+        'ER', 'TM', 'YB', 'LU', 'HCL', 'H2SO4', 'HNO3', 'H3PO4', 'NAOH',
         'KOH', 'NH3', 'CO2', 'CO', 'NO', 'NO2', 'SO2', 'SO3', 'H2O', 'H2O2',
         
         # Аббревиатуры организаций и стандартов
@@ -221,22 +221,35 @@ class BaseFIPSParser:
         'ISO', 'IEC', 'IEEE', 'ANSI', 'DIN', 'BS', 'JIS', 'GOST', 'EN',
         
         # Модели и марки
-        'iPhone', 'iPad', 'MacBook', 'Windows', 'Linux', 'Android', 'iOS',
-        'USB', 'HDMI', 'VGA', 'DVI', 'DisplayPort', 'Thunderbolt',
-        'Bluetooth', 'Wi-Fi', 'WiFi', 'ZigBee', 'LoRa', 'NB-IoT', 'LTE', '5G',
-        'CPU', 'GPU', 'RAM', 'ROM', 'SSD', 'HDD', 'BIOS', 'UEFI', 'PCIe',
+        'IPHONE', 'IPAD', 'MACBOOK', 'WINDOWS', 'LINUX', 'ANDROID', 'IOS',
+        'USB', 'HDMI', 'VGA', 'DVI', 'DISPLAYPORT', 'THUNDERBOLT',
+        'BLUETOOTH', 'WI-FI', 'WIFI', 'ZIGBEE', 'LORA', 'NB-IOT', 'LTE', '5G',
+        'CPU', 'GPU', 'RAM', 'ROM', 'SSD', 'HDD', 'BIOS', 'UEFI', 'PCIE',
         
         # Патентные классификации
-        'МПК', 'МКТУ', 'МКПО', 'НИОКР', 'РИД', 'ИС', 'ОИС', 'ФИПС', 'Роспатент',
+        'МПК', 'МКТУ', 'МКПО', 'НИОКР', 'РИД', 'ИС', 'ОИС', 'ФИПС', 'РОСПАТЕНТ',
         
         # Медицинские и биологические термины
-        'ВИЧ', 'СПИД', 'COVID-19', 'SARS-CoV-2', 'Эбола', 'Гепатит',
+        'ВИЧ', 'СПИД', 'COVID-19', 'SARS-COV-2', 'ЭБОЛА', 'ГЕПАТИТ',
         'МРТ', 'КТ', 'ПЭТ', 'УЗИ', 'ЭКГ', 'ЭЭГ', 'ЭМГ', 'ЭХО-КГ',
         
         # Технические термины
         'ЧПУ', 'АСУ', 'ТП', 'АСУТП', 'SCADA', 'PLC', 'HMI', 'CNC',
         'CAD', 'CAM', 'CAE', 'PLM', 'PDM', 'ERP', 'CRM', 'MES',
     ]
+    
+    # Список предлогов, союзов и частиц, которые должны быть в нижнем регистре
+    LOWERCASE_WORDS = {
+        # Русские
+        'в', 'на', 'с', 'со', 'у', 'к', 'ко', 'о', 'об', 'от', 'до',
+        'для', 'без', 'над', 'под', 'из', 'по', 'за', 'про', 'через',
+        'и', 'а', 'но', 'да', 'или', 'либо', 'нибудь', 'же',
+        'как', 'так', 'что', 'чтобы', 'если', 'хотя',
+        
+        # Английские
+        'and', 'or', 'but', 'if', 'then', 'else', 'for', 'to', 'with',
+        'by', 'from', 'at', 'in', 'on', 'of', 'the', 'a', 'an',
+    }
     
     def __init__(self, command):
         self.command = command
@@ -260,7 +273,12 @@ class BaseFIPSParser:
     def format_rid_name(self, name):
         """
         Приводит наименование РИД к правильному регистру согласно правилам русского языка.
-        Например: "СПОСОБ ПОЛУЧЕНИЯ ДНК" -> "Способ получения ДНК"
+        Первое слово предложения - с большой буквы, остальные - с маленькой, кроме:
+        - Имен собственных (проверяются по контексту)
+        - Аббревиатур (из списка KEEP_UPPER_RID)
+        - Терминов в кавычках
+        
+        Пример: "СПОСОБ ПОЛУЧЕНИЯ ДНК" -> "Способ получения ДНК"
         """
         if not name or not isinstance(name, str):
             return name
@@ -273,17 +291,17 @@ class BaseFIPSParser:
         sentences = re.split(r'(?<=[.!?])\s+(?=[А-ЯЁA-Z])', name)
         formatted_sentences = []
         
-        for sentence in sentences:
+        for sentence_idx, sentence in enumerate(sentences):
             if not sentence or len(sentence.strip()) == 0:
                 continue
-                
-            # Разбиваем на слова, сохраняя пробелы
-            words = re.split(r'(\s+)', sentence)
+            
+            # Разбиваем на слова, сохраняя пробелы и знаки препинания
+            words_and_spaces = re.split(r'(\s+)', sentence)
             formatted_words = []
             
             i = 0
-            while i < len(words):
-                word = words[i]
+            while i < len(words_and_spaces):
+                word = words_and_spaces[i]
                 
                 # Если это пробел, просто добавляем
                 if re.match(r'^\s+$', word):
@@ -296,16 +314,34 @@ class BaseFIPSParser:
                     i += 1
                     continue
                 
-                word_clean = word.strip('.,;:()[]{}')
-                if not word_clean:
+                # Проверяем, является ли слово числом с единицей измерения
+                unit_match = re.match(r'^(\d+(?:[.,]\d+)?)([а-яёa-z°]+)$', word, re.IGNORECASE)
+                if unit_match:
+                    number, unit = unit_match.groups()
+                    unit_upper = unit.upper()
+                    if unit_upper in self.KEEP_UPPER_RID:
+                        formatted_words.append(number + unit_upper)
+                    else:
+                        formatted_words.append(number + unit.lower())
+                    i += 1
+                    continue
+                
+                # Проверяем, является ли слово инициалом
+                if re.match(r'^[А-ЯЁA-Z]\.$', word) or re.match(r'^[А-ЯЁA-Z]\.[А-ЯЁA-Z]\.$', word):
+                    formatted_words.append(word.upper())
+                    i += 1
+                    continue
+                
+                # Проверяем, состоит ли слово только из цифр
+                if word.isdigit():
                     formatted_words.append(word)
                     i += 1
                     continue
                 
-                # Проверяем, является ли слово аббревиатурой из списка
-                word_upper = word_clean.upper()
-                if word_upper in self.KEEP_UPPER_RID:
-                    formatted_words.append(word_upper)
+                # Очищаем слово от знаков препинания для проверки
+                word_clean = re.sub(r'[.,;:!?()\[\]{}"\']', '', word)
+                if not word_clean:
+                    formatted_words.append(word)
                     i += 1
                     continue
                 
@@ -320,58 +356,67 @@ class BaseFIPSParser:
                         if part_upper in self.KEEP_UPPER_RID:
                             formatted_parts.append(part_upper)
                         else:
-                            # Для составных слов через дефис каждую часть с большой буквы
-                            formatted_parts.append(part[0].upper() + part[1:].lower())
-                    formatted_words.append('-'.join(formatted_parts))
+                            # Определяем регистр для части
+                            part_lower = part.lower()
+                            if part_lower in self.LOWERCASE_WORDS:
+                                formatted_parts.append(part_lower)
+                            else:
+                                # Первая буква заглавная, остальные строчные
+                                formatted_parts.append(part[0].upper() + part[1:].lower())
+                    
+                    # Восстанавливаем дефис и добавляем знаки препинания
+                    formatted_word = '-'.join(formatted_parts)
+                    
+                    # Добавляем обратно знаки препинания
+                    if word.endswith(('.', ',', ';', ':', '!', '?')):
+                        formatted_word += word[-1]
+                    
+                    formatted_words.append(formatted_word)
                     i += 1
                     continue
                 
-                # Проверяем, является ли слово числом с единицей измерения
-                unit_match = re.match(r'^(\d+(?:[.,]\d+)?)([а-яёa-z°]+)$', word.lower())
-                if unit_match:
-                    number, unit = unit_match.groups()
-                    unit_upper = unit.upper()
-                    if unit_upper in self.KEEP_UPPER_RID:
-                        formatted_words.append(number + unit_upper)
-                    else:
-                        formatted_words.append(number + unit.lower())
+                # Проверяем, является ли слово аббревиатурой
+                word_upper = word_clean.upper()
+                if word_upper in self.KEEP_UPPER_RID:
+                    # Аббревиатура - оставляем как есть
+                    formatted_words.append(word)
                     i += 1
                     continue
                 
-                # Проверяем, является ли слово инициалом
-                if re.match(r'^[А-ЯЁA-Z]\.$', word_clean) or re.match(r'^[А-ЯЁA-Z]\.[А-ЯЁA-Z]\.$', word_clean):
-                    formatted_words.append(word_clean.upper())
-                    i += 1
-                    continue
+                # Определяем регистр для обычного слова
+                word_lower = word_clean.lower()
                 
-                # Проверяем, состоит ли слово только из цифр
-                if word_clean.isdigit():
-                    formatted_words.append(word_clean)
-                    i += 1
-                    continue
-                
-                # Обычное слово - первая буква заглавная, остальные строчные
-                # Но только если это не аббревиатура (все заглавные)
-                if word_clean.isupper() and len(word_clean) > 1:
-                    # Проверяем, не является ли это известной аббревиатурой
-                    # Если нет, то преобразуем в обычный текст
-                    formatted_words.append(word_clean[0].upper() + word_clean[1:].lower())
+                # Проверяем, является ли слово служебным (предлог, союз)
+                if word_lower in self.LOWERCASE_WORDS:
+                    # Служебные слова всегда с маленькой буквы
+                    formatted_word = word_lower
                 else:
-                    # Слово уже в смешанном регистре или нижнем - оставляем как есть
-                    # Но первую букву делаем заглавной
-                    formatted_words.append(word_clean[0].upper() + word_clean[1:].lower())
+                    # Обычное слово - первая буква заглавная, остальные строчные
+                    # Но только если это не продолжение аббревиатуры
+                    formatted_word = word_clean[0].upper() + word_clean[1:].lower()
                 
+                # Добавляем обратно знаки препинания
+                if word != word_clean:
+                    punctuation = word[len(word_clean):]
+                    formatted_word += punctuation
+                
+                formatted_words.append(formatted_word)
                 i += 1
             
             # Собираем предложение
             formatted_sentence = ''.join(formatted_words)
             
-            # Добавляем точку в конце, если её нет и предложение не пустое
-            if formatted_sentence and not formatted_sentence.endswith('.'):
-                # Проверяем, что последний символ не точка и не другой знак препинания
-                last_char = formatted_sentence[-1]
-                if last_char not in ['.', '!', '?', ',', ';', ':']:
-                    formatted_sentence += '.'
+            # Убеждаемся, что первое слово предложения с большой буквы
+            if formatted_sentence and len(formatted_sentence) > 0:
+                # Ищем первую букву
+                first_letter_match = re.search(r'[а-яёa-z]', formatted_sentence, re.IGNORECASE)
+                if first_letter_match:
+                    pos = first_letter_match.start()
+                    formatted_sentence = (
+                        formatted_sentence[:pos] + 
+                        formatted_sentence[pos].upper() + 
+                        formatted_sentence[pos+1:]
+                    )
             
             formatted_sentences.append(formatted_sentence)
         
@@ -1293,7 +1338,7 @@ class Command(BaseCommand):
             return stats
         
         # Проверяем, парсился ли уже этот каталог
-        if not self.force and catalogue.parsed_date:
+        if not self.force and hasattr(catalogue, 'parsed_date') and catalogue.parsed_date:
             self.stdout.write(self.style.WARNING(
                 f"  ⚠️ Каталог уже был обработан {catalogue.parsed_date.strftime('%d.%m.%Y %H:%M')}"
             ))
@@ -1343,7 +1388,7 @@ class Command(BaseCommand):
             stats.update(parser_stats)
             
             # Если не dry-run и нет ошибок (или принудительно помечаем), обновляем дату парсинга
-            if not self.dry_run:
+            if not self.dry_run and hasattr(catalogue, 'parsed_date'):
                 if stats['errors'] == 0 or self.mark_processed:
                     catalogue.parsed_date = timezone.now()
                     catalogue.save(update_fields=['parsed_date'])
