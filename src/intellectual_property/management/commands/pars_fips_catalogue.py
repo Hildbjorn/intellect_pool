@@ -1176,6 +1176,9 @@ class Command(BaseCommand):
         parser.add_argument('--skip-filters', action='store_true', help='Пропустить фильтрацию (обработать все записи)')
         parser.add_argument('--only-active', action='store_true', help='Парсить только активные патенты (actual = True)')
         parser.add_argument('--max-rows', type=int, help='Максимальное количество строк для обработки (для тестирования)')
+        parser.add_argument('--force', action='store_true', help='Принудительный парсинг даже если каталог уже обработан')
+        parser.add_argument('--mark-processed', action='store_true', 
+                          help='Пометить каталог как обработанный (даже если были ошибки)')
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1257,6 +1260,15 @@ class Command(BaseCommand):
             stats['errors'] += 1
             return stats
         
+        # Проверяем, парсился ли уже этот каталог
+        if not self.force and catalogue.parsed_date:
+            self.stdout.write(self.style.WARNING(
+                f"  ⚠️ Каталог уже был обработан {catalogue.parsed_date.strftime('%d.%m.%Y %H:%M')}"
+            ))
+            self.stdout.write(self.style.WARNING(f"     Используйте --force для принудительного повторного парсинга"))
+            stats['skipped'] += 1
+            return stats
+        
         ip_type_slug = catalogue.ip_type.slug if catalogue.ip_type else None
         
         if ip_type_slug not in self.parsers:
@@ -1297,6 +1309,19 @@ class Command(BaseCommand):
         try:
             parser_stats = parser.parse_dataframe(df, catalogue)
             stats.update(parser_stats)
+            
+            # Если не dry-run и нет ошибок (или принудительно помечаем), обновляем дату парсинга
+            if not self.dry_run:
+                if stats['errors'] == 0 or self.mark_processed:
+                    catalogue.parsed_date = timezone.now()
+                    catalogue.save(update_fields=['parsed_date'])
+                    self.stdout.write(self.style.SUCCESS(f"  ✅ Каталог помечен как обработанный"))
+                else:
+                    self.stdout.write(self.style.WARNING(
+                        f"  ⚠️ Каталог не помечен как обработанный из-за ошибок "
+                        f"(используйте --mark-processed для принудительной пометки)"
+                    ))
+            
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"  ❌ Ошибка при парсинге: {e}"))
             logger.error(f"Error parsing catalogue {catalogue.id}: {e}", exc_info=True)

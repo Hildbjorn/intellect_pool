@@ -59,6 +59,14 @@ class FipsOpenDataCatalogue(models.Model):
         blank=True
     )
     
+    parsed_date = models.DateTimeField(
+        verbose_name='Дата парсинга',
+        help_text='Дата и время, когда каталог был обработан парсером',
+        blank=True,
+        null=True,
+        db_index=True
+    )
+    
     def __str__(self):
         if self.name:
             return self.name
