@@ -7,7 +7,7 @@
 import logging
 import re
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Optional, Tuple, List, Dict, Any, Set
 
 from django.db import models
 from django.core.management.base import BaseCommand, CommandError
@@ -16,17 +16,48 @@ from django.utils import timezone
 from tqdm import tqdm
 import pandas as pd
 import os
-import pymorphy2
-from pymorphy2 import MorphAnalyzer
+
+# Попытка импорта pymorphy2 с обработкой ошибок
+try:
+    import pkg_resources  # Важно: импортируем сначала pkg_resources
+    import pymorphy2
+    from pymorphy2 import MorphAnalyzer
+    PYTMORPHY_AVAILABLE = True
+except (ImportError, ModuleNotFoundError) as e:
+    PYTMORPHY_AVAILABLE = False
+    print(f"⚠️ pymorphy2 не доступен ({e}), используется упрощенная обработка текста")
+    
+    # Заглушки для pymorphy2
+    class SimpleTag:
+        def __init__(self, word): 
+            self.word = word
+        def __contains__(self, item): 
+            return False
+        def __str__(self): 
+            return ''
+    
+    class SimpleParse:
+        def __init__(self, word): 
+            self.word = word
+            self.tag = SimpleTag(word)
+    
+    class SimpleMorph:
+        def parse(self, word): 
+            return [SimpleParse(word)]
+    
+    MorphAnalyzer = SimpleMorph
 
 from intellectual_property.models import (
-    FipsOpenDataCatalogue, IPType, IPObject
+    FipsOpenDataCatalogue, IPType, ProtectionDocumentType,
+    IPObject, AdditionalPatent, IPImage
 )
 from core.models import (
-    Person, Organization, 
+    City, Region, District, Person, Organization, 
     FOIV, Country, RFRepresentative,
-    OrganizationNormalizationRule
+    OrganizationNormalizationRule, ActivityType, CeoPosition
 )
+from common.utils.text import TextUtils
+from common.utils.dates import DateUtils
 
 logger = logging.getLogger(__name__)
 
@@ -34,38 +65,79 @@ logger = logging.getLogger(__name__)
 class MorphAnalyzerWrapper:
     """
     Обертка для pymorphy2 с кэшированием результатов
+    Если pymorphy2 недоступен, использует упрощенную логику
     """
     _instance = None
     _cache = {}
     
+    # Список предлогов и союзов для упрощенной логики
+    PREPOSITIONS = {
+        'в', 'на', 'с', 'со', 'у', 'к', 'ко', 'о', 'об', 'от', 'до',
+        'для', 'без', 'над', 'под', 'из', 'по', 'за', 'про', 'через',
+        'и', 'а', 'но', 'да', 'или', 'либо', 'же', 'как', 'так',
+        'что', 'чтобы', 'если', 'хотя', 'при', 'во', 'обо', 'из-за', 'из-под',
+        'and', 'or', 'but', 'if', 'then', 'else', 'for', 'to', 'with',
+        'by', 'from', 'at', 'in', 'on', 'of', 'the', 'a', 'an',
+    }
+    
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance.morph = pymorphy2.MorphAnalyzer()
+            if PYTMORPHY_AVAILABLE:
+                try:
+                    cls._instance.morph = pymorphy2.MorphAnalyzer()
+                except Exception as e:
+                    print(f"⚠️ Ошибка инициализации pymorphy2: {e}, используется упрощенная логика")
+                    cls._instance.morph = SimpleMorph()
+            else:
+                cls._instance.morph = SimpleMorph()
         return cls._instance
     
     def parse(self, word: str):
         """Разбор слова с кэшированием"""
+        if not word:
+            return []
         if word in self._cache:
             return self._cache[word]
-        result = self.morph.parse(word)
-        self._cache[word] = result
-        return result
+        try:
+            result = self.morph.parse(word)
+            self._cache[word] = result
+            return result
+        except Exception:
+            return []
     
     def is_name(self, word: str) -> bool:
         """Проверка, является ли слово именем собственным"""
-        if not word:
+        if not word or len(word) < 2:
             return False
-        parsed = self.parse(word)[0]
-        tags = str(parsed.tag)
-        return any(tag in tags for tag in ['Name', 'Surn', 'Patr'])
+        
+        if PYTMORPHY_AVAILABLE:
+            try:
+                parsed = self.parse(word)
+                if parsed and len(parsed) > 0:
+                    tags = str(parsed[0].tag)
+                    return any(tag in tags for tag in ['Name', 'Surn', 'Patr'])
+            except Exception:
+                pass
+        
+        # Упрощенная логика: слова с большой буквы, не предлоги
+        return word[0].isupper() and word.lower() not in self.PREPOSITIONS
     
     def is_preposition(self, word: str) -> bool:
         """Проверка, является ли слово предлогом/союзом"""
         if not word:
             return False
-        parsed = self.parse(word)[0]
-        return 'PREP' in str(parsed.tag) or 'CONJ' in str(parsed.tag)
+        
+        if PYTMORPHY_AVAILABLE:
+            try:
+                parsed = self.parse(word)
+                if parsed and len(parsed) > 0:
+                    return 'PREP' in str(parsed[0].tag) or 'CONJ' in str(parsed[0].tag)
+            except Exception:
+                pass
+        
+        # Упрощенная логика: проверка по списку
+        return word.lower() in self.PREPOSITIONS
     
     def normalize_case(self, word: str, is_first: bool = False) -> str:
         """
@@ -87,18 +159,14 @@ class MorphAnalyzerWrapper:
         if not clean_word:
             return word
         
-        # Проверяем через морфологию
-        parsed = self.parse(clean_word)[0]
-        tags = str(parsed.tag)
-        
         # Определяем регистр
         if is_first:
             # Первое слово - с большой буквы
             result = clean_word[0].upper() + clean_word[1:].lower()
-        elif 'Name' in tags or 'Surn' in tags or 'Patr' in tags:
+        elif self.is_name(clean_word):
             # Имена собственные - с большой буквы
             result = clean_word[0].upper() + clean_word[1:].lower()
-        elif 'PREP' in tags or 'CONJ' in tags:
+        elif self.is_preposition(clean_word):
             # Предлоги и союзы - с маленькой буквы
             result = clean_word.lower()
         else:
@@ -125,16 +193,20 @@ class OrganizationNormalizer:
     
     def load_rules(self):
         """Загрузка правил из БД в кэш"""
-        rules = OrganizationNormalizationRule.objects.all().order_by('priority')
-        self.rules_cache = [
-            {
-                'original': rule.original_text.lower(),
-                'replacement': rule.replacement_text.lower(),
-                'type': rule.rule_type,
-                'priority': rule.priority
-            }
-            for rule in rules
-        ]
+        try:
+            rules = OrganizationNormalizationRule.objects.all().order_by('priority')
+            self.rules_cache = [
+                {
+                    'original': rule.original_text.lower(),
+                    'replacement': rule.replacement_text.lower(),
+                    'type': rule.rule_type,
+                    'priority': rule.priority
+                }
+                for rule in rules
+            ]
+        except Exception as e:
+            self.rules_cache = []
+            logger.warning(f"Не удалось загрузить правила нормализации: {e}")
     
     def reload_rules(self):
         """Перезагрузка правил (после изменений в БД)"""
@@ -155,14 +227,17 @@ class OrganizationNormalizer:
         normalized = name_lower
         if self.rules_cache:
             for rule in self.rules_cache:
-                if rule['type'] == 'ignore':
-                    # Для игнорируемых слов просто удаляем их
-                    pattern = r'\b' + re.escape(rule['original']) + r'\b'
-                    normalized = re.sub(pattern, '', normalized)
-                else:
-                    # Для замен
-                    pattern = r'\b' + re.escape(rule['original']) + r'\b'
-                    normalized = re.sub(pattern, rule['replacement'], normalized)
+                try:
+                    if rule['type'] == 'ignore':
+                        # Для игнорируемых слов просто удаляем их
+                        pattern = r'\b' + re.escape(rule['original']) + r'\b'
+                        normalized = re.sub(pattern, '', normalized)
+                    else:
+                        # Для замен
+                        pattern = r'\b' + re.escape(rule['original']) + r'\b'
+                        normalized = re.sub(pattern, rule['replacement'], normalized)
+                except Exception:
+                    continue
         
         # Убираем кавычки всех видов
         normalized = re.sub(r'["\'«»„“”]', '', normalized)
@@ -264,7 +339,7 @@ class OrganizationNormalizer:
 
 class EntityTypeDetector:
     """
-    Детектор типов сущностей с использованием pymorphy2
+    Детектор типов сущностей с использованием морфологического анализа
     """
     
     def __init__(self):
@@ -315,7 +390,7 @@ class EntityTypeDetector:
 
 class RIDNameFormatter:
     """
-    Класс для форматирования названий РИД с использованием pymorphy2
+    Класс для форматирования названий РИД с использованием морфологического анализа
     """
     
     def __init__(self):
@@ -347,16 +422,6 @@ class RIDNameFormatter:
             
             # Патентные классификации
             'МПК', 'МКТУ', 'МКПО', 'НИОКР', 'РИД', 'ИС', 'ОИС', 'ФИПС',
-        }
-        
-        # Предлоги, союзы, частицы, которые всегда с маленькой буквы
-        self.LOWERCASE_WORDS = {
-            'в', 'на', 'с', 'со', 'у', 'к', 'ко', 'о', 'об', 'от', 'до',
-            'для', 'без', 'над', 'под', 'из', 'по', 'за', 'про', 'через',
-            'и', 'а', 'но', 'да', 'или', 'либо', 'же', 'как', 'так',
-            'что', 'чтобы', 'если', 'хотя', 'при', 'во', 'обо',
-            'and', 'or', 'but', 'if', 'then', 'else', 'for', 'to', 'with',
-            'by', 'from', 'at', 'in', 'on', 'of', 'the', 'a', 'an',
         }
     
     def format(self, text: str) -> str:
@@ -441,33 +506,7 @@ class RIDNameFormatter:
                 formatted_parts.append(self._format_word(part, False))
             return '-'.join(formatted_parts)
         
-        # Очистка от знаков препинания для анализа
-        clean_word = re.sub(r'[.,;:!?()]', '', word)
-        if not clean_word:
-            return word
-        
-        # Анализ через морфологию
-        word_lower = clean_word.lower()
-        
-        # Проверка на предлоги и союзы
-        if word_lower in self.LOWERCASE_WORDS or self.morph.is_preposition(clean_word):
-            result = word_lower
-        elif is_first:
-            # Первое слово - с большой буквы
-            result = clean_word[0].upper() + clean_word[1:].lower()
-        elif self.morph.is_name(clean_word):
-            # Имена собственные - с большой буквы
-            result = clean_word[0].upper() + clean_word[1:].lower()
-        else:
-            # Обычные слова - с маленькой буквы
-            result = clean_word.lower()
-        
-        # Добавляем обратно знаки препинания
-        if word != clean_word:
-            punctuation = word[len(clean_word):]
-            result += punctuation
-        
-        return result
+        return self.morph.normalize_case(word, is_first)
 
 
 class PersonNameFormatter:
@@ -500,13 +539,7 @@ class PersonNameFormatter:
                 continue
             
             # Обычное слово
-            clean_part = part.strip('.')
-            if clean_part.isupper() and len(clean_part) > 1:
-                # Вероятно, фамилия или имя в верхнем регистре
-                formatted_parts.append(clean_part[0].upper() + clean_part[1:].lower())
-            else:
-                # Уже в правильном регистре или смешанном
-                formatted_parts.append(part)
+            formatted_parts.append(self.morph.normalize_case(part, True))
         
         return ' '.join(formatted_parts)
 
