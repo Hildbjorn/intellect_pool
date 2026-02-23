@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 class RussianTextProcessor:
     """
-    Полноценный процессор для русских текстов с использованием natasha
+    Процессор для русских текстов с использованием natasha
     """
     
     # Список римских цифр
@@ -58,17 +58,7 @@ class RussianTextProcessor:
         'C', 'CD', 'D', 'DC', 'CM', 'M'
     }
     
-    # Список предлогов, союзов, частиц
-    LOWERCASE_WORDS = {
-        'в', 'на', 'с', 'со', 'у', 'к', 'ко', 'о', 'об', 'от', 'до',
-        'для', 'без', 'над', 'под', 'из', 'по', 'за', 'про', 'через',
-        'и', 'а', 'но', 'да', 'или', 'либо', 'же', 'как', 'так',
-        'что', 'чтобы', 'если', 'хотя', 'при', 'во', 'обо', 'из-за', 'из-под',
-        'and', 'or', 'but', 'if', 'then', 'else', 'for', 'to', 'with',
-        'by', 'from', 'at', 'in', 'on', 'of', 'the', 'a', 'an',
-    }
-    
-    # Аббревиатуры для организаций
+    # Аббревиатуры для поиска организаций
     ORG_ABBR = {
         'ООО', 'ЗАО', 'ОАО', 'АО', 'ПАО', 'НАО',
         'ФГУП', 'ФГБУ', 'ФГАОУ', 'ФГАУ', 'ФГКУ',
@@ -77,27 +67,8 @@ class RussianTextProcessor:
         'МУП', 'ГУП', 'ИЧП', 'ТОО', 'АОЗТ', 'АООТ',
         'РФ', 'РАН', 'СО РАН', 'УрО РАН', 'ДВО РАН',
         'МГУ', 'СПбГУ', 'МФТИ', 'МИФИ', 'МГТУ', 'МАИ',
-        'ФИАН', 'МИАН', 'ИПМ', 'ИПМех', 'ИППИ',
-        'ЦАГИ', 'ЦИАМ', 'ВИАМ', 'ВИЛС', 'ВИМС', 'ВНИИ',
-        'МНТК', 'МЧС', 'МВД', 'ФСБ', 'ФСО', 'Рос', 'Мин',
         'ЛТД', 'ИНК', 'КО', 'ГМБХ', 'АГ', 'СА', 'НВ', 'БВ', 'СЕ',
         'Ко', 'Ltd', 'Inc', 'GmbH', 'AG', 'SA', 'NV', 'BV', 'SE',
-    }
-    
-    # Аббревиатуры для РИД
-    RID_ABBR = {
-        'ДНК', 'РНК', 'ПЦР', 'ИФА', 'ЭДТА', 'АТФ', 'АДФ', 'НАД', 'НАДФ',
-        'ВИЧ', 'СПИД', 'COVID-19', 'SARS-COV-2',
-        '°C', '°F', 'K', 'М', 'СМ', 'ММ', 'КМ', 'КГ', 'Г', 'МГ', 'МКГ',
-        'Л', 'МЛ', 'МКЛ', 'С', 'МС', 'МКС', 'МИН', 'Ч', 'СУТ',
-        'ПА', 'КПА', 'МПА', 'ГПА', 'АТМ', 'БАР',
-        'А', 'В', 'ВТ', 'КВТ', 'МВТ', 'ГВТ', 'ОМ', 'Ф', 'ГН', 'ТЛ',
-        'БИТ', 'БАЙТ', 'КБ', 'МБ', 'ГБ', 'ТБ', 'ГЦ', 'КГЦ', 'МГЦ', 'ГГЦ',
-        'ГОСТ', 'ТУ', 'СНиП', 'СП', 'СанПиН', 'ISO', 'IEC', 'IEEE',
-        'USB', 'HDMI', 'WI-FI', 'LTE', '5G', 'CPU', 'GPU', 'RAM', 'ROM',
-        'CAD', 'CAM', 'CAE', 'PLM', 'PDM', 'ERP', 'CRM', 'MES',
-        'МПК', 'МКТУ', 'МКПО', 'НИОКР', 'РИД', 'ИС', 'ОИС', 'ФИПС',
-        'ЯМР', 'ЭПР', 'ИК', 'УФ', 'ВУФ', 'ЭМИ', 'КПД',
     }
     
     def __init__(self):
@@ -116,10 +87,6 @@ class RussianTextProcessor:
         
         # Добавляем римские цифры в аббревиатуры
         self.ORG_ABBR.update(self.ROMAN_NUMERALS)
-        self.RID_ABBR.update(self.ROMAN_NUMERALS)
-        
-        # Статистика использования
-        self.stats = defaultdict(int)
     
     def get_doc(self, text: str) -> Optional[Doc]:
         """Получение или создание документа с кэшированием"""
@@ -127,7 +94,6 @@ class RussianTextProcessor:
             return None
         
         if text in self.doc_cache:
-            self.stats['doc_cache_hits'] += 1
             return self.doc_cache[text]
         
         doc = Doc(text)
@@ -144,7 +110,6 @@ class RussianTextProcessor:
             span.normalize(self.morph_vocab)
         
         self.doc_cache[text] = doc
-        self.stats['doc_cache_misses'] += 1
         return doc
     
     def is_roman_numeral(self, text: str) -> bool:
@@ -154,33 +119,37 @@ class RussianTextProcessor:
         clean_text = text.strip('.,;:!?()').upper()
         return clean_text in self.ROMAN_NUMERALS
     
-    def is_abbr(self, text: str, abbr_set: Set[str]) -> bool:
-        """Проверка на аббревиатуру"""
+    def is_abbr(self, text: str) -> bool:
+        """Проверка на аббревиатуру организации"""
         if not text:
             return False
         clean_text = text.strip('.,;:!?()').upper()
-        return clean_text in abbr_set
+        return clean_text in self.ORG_ABBR
     
     def is_person(self, text: str) -> bool:
-        """Определение, является ли текст ФИО человека с использованием NER"""
+        """Определение, является ли текст ФИО человека"""
         if not text or len(text) < 6:
             return False
         
+        # Если есть явные признаки организации
+        if any(ind in text for ind in self.ORG_ABBR if len(ind) > 2):
+            return False
+        
+        org_indicators = ['Общество', 'Компания', 'Корпорация', 'Завод', 
+                         'Институт', 'Университет', 'Академия', 'Лаборатория',
+                         'Фирма', 'Центр']
+        
+        if any(ind.lower() in text.lower() for ind in org_indicators):
+            return False
+        
+        # Проверка через NER
         doc = self.get_doc(text)
         if doc and doc.spans:
             for span in doc.spans:
                 if span.type == 'PER':
                     return True
         
-        # Fallback на правила
-        org_indicators = ['ООО', 'ЗАО', 'АО', 'ПАО', 'ФГУП', 'ФГБУ', 
-                         'Общество', 'Компания', 'Корпорация', 'Завод', 
-                         'Институт', 'Университет', 'Академия', 'Лаборатория',
-                         'НИИ', 'КБ', 'НПО', 'Центр', 'Фирма']
-        
-        if any(ind in text for ind in org_indicators):
-            return False
-        
+        # Паттерны ФИО
         words = text.split()
         if 2 <= len(words) <= 4:
             name_like = 0
@@ -194,254 +163,67 @@ class RussianTextProcessor:
     
     def extract_person_parts(self, text: str) -> Dict[str, str]:
         """Извлечение частей ФИО с помощью natasha"""
-        matches = self.names_extractor(text)
+        matches = list(self.names_extractor(text))
         if matches:
             fact = matches[0].fact
+            parts = []
+            if fact.last:
+                parts.append(fact.last)
+            if fact.first:
+                parts.append(fact.first)
+            if fact.middle:
+                parts.append(fact.middle)
+            
             return {
-                'last': fact.last,
-                'first': fact.first,
-                'middle': fact.middle,
-                'full': fact.as_string
+                'last': fact.last or '',
+                'first': fact.first or '',
+                'middle': fact.middle or '',
+                'full': ' '.join(parts)
             }
-        return {}
+        
+        # Fallback: ручной парсинг
+        return self._parse_name_manually(text)
     
-    def fix_quotes(self, text: str) -> str:
-        """Исправление кавычек и пробелов вокруг них"""
-        if not text:
-            return text
+    def _parse_name_manually(self, text: str) -> Dict[str, str]:
+        """Ручной парсинг имени"""
+        words = text.split()
         
-        # Заменяем множественные кавычки
-        text = re.sub(r'""+', ' "', text)
-        
-        # Пробел перед открывающей кавычкой
-        text = re.sub(r'([^ ])"([^"])', r'\1 "\2', text)
-        
-        # Пробел после закрывающей кавычки
-        text = re.sub(r'([^"])"([^ ])', r'\1" \2', text)
-        
-        # Убираем лишние пробелы
-        text = re.sub(r'\s+', ' ', text)
-        
-        return text.strip()
-    
-    def format_initials(self, text: str) -> str:
-        """Форматирование инициалов и фамилий после 'им.' или 'имени'"""
-        def replace_initials(match):
-            prefix = match.group(1).lower()  # "им." или "имени"
-            initials = match.group(2)        # "и.м." или "и м"
-            surname = match.group(3)         # "сеченова"
-            
-            # Форматируем инициалы
-            initials_clean = re.sub(r'\s+', '', initials)
-            initials_formatted = '.'.join([i.upper() for i in initials_clean if i.isalpha()]) + '.'
-            
-            # Фамилия с большой буквы
-            surname_formatted = surname[0].upper() + surname[1:].lower()
-            
-            return f"{prefix} {initials_formatted} {surname_formatted}"
-        
-        pattern = r'(им\.|имени)\s+([а-яё]\s*\.?\s*[а-яё]?\s*\.?)\s+([а-яё]+)'
-        return re.sub(pattern, replace_initials, text, flags=re.IGNORECASE)
+        if len(words) == 3:
+            return {
+                'last': words[0],
+                'first': words[1],
+                'middle': words[2],
+                'full': text
+            }
+        elif len(words) == 2:
+            return {
+                'last': words[0],
+                'first': words[1],
+                'middle': '',
+                'full': text
+            }
+        else:
+            return {
+                'last': text,
+                'first': '',
+                'middle': '',
+                'full': text
+            }
     
     def format_person_name(self, name: str) -> str:
         """Форматирование ФИО человека"""
         if not name:
             return name
         
-        # Сначала пробуем извлечь через names_extractor
         parts = self.extract_person_parts(name)
-        if parts and parts.get('full'):
+        if parts.get('full'):
             return parts['full']
         
-        # Fallback: ручное форматирование
-        words = name.split()
-        formatted = []
-        
-        for word in words:
-            if not word:
-                continue
-            
-            # Инициалы
-            if '.' in word:
-                initials = [ch for ch in word if ch.isalpha()]
-                formatted.append(''.join([i.upper() + '.' for i in initials]))
-                continue
-            
-            # Обычные слова
-            clean = word.strip('.,')
-            if clean.isupper() and len(clean) > 1:
-                formatted.append(clean[0].upper() + clean[1:].lower())
-            else:
-                formatted.append(clean)
-        
-        return ' '.join(formatted)
-    
-    def format_organization_name(self, name: str) -> str:
-        """Форматирование названия организации"""
-        if not name:
-            return name
-        
-        # Исправляем кавычки
-        name = self.fix_quotes(name)
-        
-        # Обрабатываем "им. И.О. Фамилия"
-        name = self.format_initials(name)
-        
-        # Получаем NER для определения именованных сущностей
-        doc = self.get_doc(name)
-        ner_spans = {span.text: span.type for span in doc.spans} if doc else {}
-        
-        # Разбиваем на части по кавычкам
-        parts = re.split(r'(")', name)
-        result = []
-        in_quotes = False
-        
-        for part in parts:
-            if part == '"':
-                in_quotes = not in_quotes
-                result.append(part)
-                continue
-            
-            if not part.strip():
-                result.append(part)
-                continue
-            
-            words = part.split()
-            formatted_words = []
-            
-            for word in words:
-                if not word:
-                    continue
-                
-                word_clean = word.strip('.,;:()')
-                
-                # Проверка на аббревиатуру
-                if self.is_abbr(word_clean, self.ORG_ABBR):
-                    formatted_words.append(word_clean.upper())
-                
-                # Проверка на римские цифры
-                elif self.is_roman_numeral(word_clean):
-                    formatted_words.append(word_clean.upper())
-                
-                # Проверка на именованную сущность
-                elif word_clean in ner_spans and ner_spans[word_clean] in ['PER', 'LOC', 'ORG']:
-                    formatted_words.append(word_clean[0].upper() + word_clean[1:].lower())
-                
-                # Внутри кавычек - каждое слово с большой буквы
-                elif in_quotes:
-                    formatted_words.append(word_clean[0].upper() + word_clean[1:].lower())
-                
-                # Вне кавычек - обычные слова с маленькой
-                else:
-                    formatted_words.append(word_clean.lower())
-            
-            result.append(' '.join(formatted_words))
-        
-        return ''.join(result)
-    
-    def format_rid_name(self, text: str) -> str:
-        """Форматирование названия РИД"""
-        if not text or not isinstance(text, str):
-            return text
-        
-        if len(text.strip()) <= 1:
-            return text
-        
-        # Приводим к нижнему регистру
-        text_lower = text.lower()
-        
-        # Получаем NER для определения именованных сущностей
-        doc = self.get_doc(text)
-        ner_spans = {span.text.lower(): span.type for span in doc.spans} if doc else {}
-        
-        # Разбиваем на предложения
-        sentences = re.split(r'(?<=[.!?])\s+(?=[а-яёa-z])', text_lower)
-        formatted_sentences = []
-        
-        for sentence in sentences:
-            if not sentence.strip():
-                continue
-            
-            # Разбиваем на слова
-            words = re.split(r'(\s+)', sentence)
-            formatted_words = []
-            is_first_word = True
-            
-            for word in words:
-                if word.isspace():
-                    formatted_words.append(word)
-                    continue
-                
-                if not word.strip():
-                    formatted_words.append(word)
-                    continue
-                
-                word_clean = word.strip('.,;:!?()')
-                
-                # Проверка на аббревиатуру
-                if self.is_abbr(word_clean, self.RID_ABBR):
-                    formatted_words.append(word_clean.upper())
-                    is_first_word = False
-                    continue
-                
-                # Проверка на римские цифры
-                elif self.is_roman_numeral(word_clean):
-                    formatted_words.append(word_clean.upper())
-                    is_first_word = False
-                    continue
-                
-                # Проверка на именованную сущность
-                elif word_clean in ner_spans:
-                    formatted_words.append(word_clean[0].upper() + word_clean[1:])
-                    is_first_word = False
-                    continue
-                
-                # Проверка на инициалы
-                elif re.match(r'^[a-z]\.$', word_clean) or re.match(r'^[a-z]\.[a-z]\.$', word_clean):
-                    formatted_words.append(word_clean.upper())
-                    is_first_word = False
-                    continue
-                
-                # Проверка на числа
-                elif word_clean.isdigit():
-                    formatted_words.append(word_clean)
-                    is_first_word = False
-                    continue
-                
-                # Проверка на слова через дефис
-                elif '-' in word_clean:
-                    parts = word_clean.split('-')
-                    formatted_parts = []
-                    for i, part in enumerate(parts):
-                        if self.is_abbr(part, self.RID_ABBR) or self.is_roman_numeral(part):
-                            formatted_parts.append(part.upper())
-                        elif i == 0 and is_first_word:
-                            formatted_parts.append(part[0].upper() + part[1:])
-                        else:
-                            formatted_parts.append(part)
-                    formatted_words.append('-'.join(formatted_parts))
-                    is_first_word = False
-                    continue
-                
-                # Обычные слова
-                if is_first_word:
-                    # Первое слово с большой буквы
-                    formatted_words.append(word_clean[0].upper() + word_clean[1:])
-                    is_first_word = False
-                elif word_clean in self.LOWERCASE_WORDS:
-                    # Предлоги и союзы с маленькой
-                    formatted_words.append(word_clean)
-                else:
-                    # Остальные слова с маленькой
-                    formatted_words.append(word_clean)
-            
-            formatted_sentences.append(''.join(formatted_words))
-        
-        return ' '.join(formatted_sentences)
+        return name
 
 
 class OrganizationNormalizer:
-    """Нормализация названий организаций"""
+    """Нормализация названий организаций (только для поиска, не для сохранения)"""
     
     def __init__(self):
         self.rules_cache = None
@@ -465,15 +247,18 @@ class OrganizationNormalizer:
             self.rules_cache = []
             logger.warning(f"Не удалось загрузить правила нормализации: {e}")
     
-    def normalize(self, name: str) -> Dict[str, Any]:
-        """Нормализация названия"""
+    def normalize_for_search(self, name: str) -> Dict[str, Any]:
+        """
+        Нормализация названия ТОЛЬКО для поиска дубликатов
+        Само название остается как в CSV
+        """
         if pd.isna(name) or not name:
             return {'normalized': '', 'keywords': [], 'original': name}
         
         original = str(name).strip()
         name_lower = original.lower()
         
-        # Применяем правила из БД
+        # Применяем правила из БД для нормализации
         normalized = name_lower
         if self.rules_cache:
             for rule in self.rules_cache:
@@ -487,17 +272,27 @@ class OrganizationNormalizer:
                 except Exception:
                     continue
         
-        # Убираем кавычки и знаки препинания
+        # Убираем кавычки и знаки препинания для поиска
         normalized = re.sub(r'["\'«»„“”]', '', normalized)
         normalized = re.sub(r'[^\w\s-]', ' ', normalized)
         normalized = ' '.join(normalized.split())
         
-        # Извлекаем ключевые слова
+        # Извлекаем ключевые слова для поиска
         keywords = []
+        
+        # Слова в кавычках
         quoted = re.findall(r'"([^"]+)"', original)
         for q in quoted:
             words = q.lower().split()
             keywords.extend([w for w in words if len(w) > 3])
+        
+        # Аббревиатуры
+        abbrs = re.findall(r'\b[А-ЯЁA-Z]{2,}\b', original)
+        keywords.extend([a.lower() for a in abbrs if len(a) >= 2])
+        
+        # Коды (ИНН, ОГРН и т.д.)
+        codes = re.findall(r'\b\d{10,}\b', original)
+        keywords.extend(codes)
         
         return {
             'normalized': normalized,
@@ -506,21 +301,8 @@ class OrganizationNormalizer:
         }
     
     def format_organization_name(self, name: str) -> str:
-        """Форматирование названия"""
-        return self.processor.format_organization_name(name)
-
-
-class EntityTypeDetector:
-    """Детектор типов сущностей"""
-    
-    def __init__(self):
-        self.processor = RussianTextProcessor()
-    
-    def detect_type(self, text: str) -> str:
-        """Определение типа сущности"""
-        if self.processor.is_person(text):
-            return 'person'
-        return 'organization'
+        """Возвращает оригинальное название без изменений"""
+        return name
 
 
 class PersonNameFormatter:
@@ -542,11 +324,34 @@ class RIDNameFormatter:
     
     def format(self, text: str) -> str:
         """Форматирование названия РИД"""
-        return self.processor.format_rid_name(text)
+        if not text or not isinstance(text, str):
+            return text
+        
+        if len(text.strip()) <= 1:
+            return text
+        
+        # Приводим к нижнему регистру и делаем первую букву заглавной
+        words = text.lower().split()
+        if words:
+            words[0] = words[0][0].upper() + words[0][1:]
+        return ' '.join(words)
+
+
+class EntityTypeDetector:
+    """Детектор типов сущностей"""
+    
+    def __init__(self):
+        self.processor = RussianTextProcessor()
+    
+    def detect_type(self, text: str) -> str:
+        """Определение типа сущности"""
+        if self.processor.is_person(text):
+            return 'person'
+        return 'organization'
 
 
 class BaseFIPSParser:
-    """Базовый класс для всех парсеров"""
+    """Базовый класс для всех парсеров каталогов ФИПС"""
     
     def __init__(self, command):
         self.command = command
@@ -569,39 +374,21 @@ class BaseFIPSParser:
         self.city_cache = {}
         self.activity_type_cache = {}
         self.ceo_position_cache = {}
-        
-        # Статистика пропусков по дате
-        self.skipped_by_date = 0
     
     def get_ip_type(self):
+        """Должен быть переопределен в дочерних классах"""
         raise NotImplementedError
     
     def get_required_columns(self):
+        """Возвращает список обязательных колонок"""
         raise NotImplementedError
     
     def parse_dataframe(self, df, catalogue):
+        """Основной метод парсинга DataFrame"""
         raise NotImplementedError
     
-    def should_skip_by_date(self, registration_number: str, upload_date: Optional[datetime.date]) -> bool:
-        """
-        Проверка, нужно ли пропустить запись по дате обновления
-        """
-        if self.command.force or not upload_date:
-            return False
-        
-        try:
-            ip_object = IPObject.objects.get(registration_number=registration_number)
-            
-            if ip_object.updated_at and ip_object.updated_at.date() >= upload_date:
-                self.skipped_by_date += 1
-                return True
-                
-        except IPObject.DoesNotExist:
-            pass
-        
-        return False
-    
     def clean_string(self, value):
+        """Очистка строкового значения"""
         if pd.isna(value) or value is None:
             return ''
         value = str(value).strip()
@@ -610,6 +397,7 @@ class BaseFIPSParser:
         return value
     
     def parse_date(self, value):
+        """Парсинг даты из строки"""
         if pd.isna(value) or not value:
             return None
         
@@ -629,12 +417,14 @@ class BaseFIPSParser:
             return None
     
     def parse_bool(self, value):
+        """Парсинг булевого значения"""
         if pd.isna(value) or not value:
             return False
         value = str(value).lower().strip()
         return value in ['1', 'true', 'yes', 'да', 'действует', 't', '1.0', 'активен']
     
     def get_or_create_country(self, code):
+        """Получение страны по коду"""
         if not code or pd.isna(code):
             return None
         
@@ -663,6 +453,7 @@ class BaseFIPSParser:
             return None
     
     def parse_authors(self, authors_str):
+        """Парсинг строки с авторами"""
         if pd.isna(authors_str) or not authors_str:
             return []
         
@@ -706,6 +497,7 @@ class BaseFIPSParser:
         return result
     
     def parse_patent_holders(self, holders_str):
+        """Парсинг строки с патентообладателями"""
         if pd.isna(holders_str) or not holders_str:
             return []
         
@@ -724,6 +516,7 @@ class BaseFIPSParser:
         return result
     
     def find_or_create_person(self, person_data):
+        """Поиск или создание физического лица"""
         cache_key = f"{person_data['last_name']}|{person_data['first_name']}|{person_data['middle_name']}"
         
         if cache_key in self.person_cache:
@@ -755,12 +548,24 @@ class BaseFIPSParser:
                 full_name = ' '.join(full_name_parts)
                 full_name = self.person_formatter.format(full_name)
             
+            # Генерируем уникальный slug
+            base_slug = slugify(f"{person_data['last_name']} {person_data['first_name']} {person_data['middle_name']}".strip())
+            if not base_slug:
+                base_slug = 'person'
+            
+            unique_slug = base_slug
+            counter = 1
+            while Person.objects.filter(slug=unique_slug).exists():
+                unique_slug = f"{base_slug}-{counter}"
+                counter += 1
+            
             person = Person.objects.create(
                 ceo_id=new_id,
                 ceo=full_name,
                 last_name=person_data['last_name'],
                 first_name=person_data['first_name'],
-                middle_name=person_data['middle_name']
+                middle_name=person_data['middle_name'],
+                slug=unique_slug
             )
             self.person_cache[cache_key] = person
             return person
@@ -769,6 +574,7 @@ class BaseFIPSParser:
             return None
     
     def find_or_create_person_from_name(self, full_name):
+        """Поиск или создание физического лица по полному имени"""
         if pd.isna(full_name) or not full_name:
             return None
         
@@ -805,12 +611,13 @@ class BaseFIPSParser:
         return self.find_or_create_person(person_data)
     
     def find_similar_organization(self, org_name):
+        """Усиленный поиск похожей организации"""
         if pd.isna(org_name) or not org_name:
             return None
         
         org_name = str(org_name).strip().strip('"')
         
-        # Прямое совпадение
+        # Стратегия 1: Прямое совпадение
         direct_match = Organization.objects.filter(
             models.Q(name=org_name) |
             models.Q(full_name=org_name) |
@@ -819,12 +626,12 @@ class BaseFIPSParser:
         if direct_match:
             return direct_match
         
-        # Нормализованный поиск
-        norm_data = self.org_normalizer.normalize(org_name)
+        # Нормализуем название для поиска
+        norm_data = self.org_normalizer.normalize_for_search(org_name)
         normalized = norm_data['normalized']
         keywords = norm_data['keywords']
         
-        # Поиск по ключевым словам
+        # Стратегия 2: Поиск по ключевым словам
         for keyword in keywords:
             if len(keyword) >= 3:
                 similar = Organization.objects.filter(
@@ -835,7 +642,7 @@ class BaseFIPSParser:
                 if similar:
                     return similar
         
-        # Поиск по вхождению
+        # Стратегия 3: Поиск по первым 30 символам
         if len(normalized) > 30:
             prefix = normalized[:30]
             similar = Organization.objects.filter(
@@ -846,9 +653,21 @@ class BaseFIPSParser:
             if similar:
                 return similar
         
+        # Стратегия 4: Поиск по отдельным словам
+        words = org_name.split()
+        for word in words:
+            if len(word) > 4:
+                similar = Organization.objects.filter(
+                    models.Q(name__icontains=word) |
+                    models.Q(full_name__icontains=word)
+                ).first()
+                if similar:
+                    return similar
+        
         return None
     
     def find_or_create_organization(self, org_name):
+        """Поиск или создание организации с сохранением оригинального названия"""
         if pd.isna(org_name) or not org_name:
             return None
         
@@ -867,32 +686,28 @@ class BaseFIPSParser:
             self.organization_cache[org_name] = similar
             return similar
         
-        # Форматируем название
-        formatted_name = self.org_normalizer.format_organization_name(org_name)
-        
-        # Генерируем slug
-        norm_data = self.org_normalizer.normalize(org_name)
-        normalized = norm_data['normalized']
-        
-        base_slug = slugify(normalized[:50])
-        if not base_slug:
-            base_slug = 'organization'
-        
-        unique_slug = base_slug
-        counter = 1
-        while Organization.objects.filter(slug=unique_slug).exists():
-            unique_slug = f"{base_slug}-{counter}"
-            counter += 1
-        
+        # Не нашли - создаем новую с оригинальным названием
         try:
             max_id = Organization.objects.aggregate(models.Max('organization_id'))['organization_id__max'] or 0
             new_id = max_id + 1
             
+            # Генерируем slug из оригинального названия
+            base_slug = slugify(org_name[:50])
+            if not base_slug:
+                base_slug = 'organization'
+            
+            unique_slug = base_slug
+            counter = 1
+            while Organization.objects.filter(slug=unique_slug).exists():
+                unique_slug = f"{base_slug}-{counter}"
+                counter += 1
+            
+            # Сохраняем оригинальное название без изменений
             org = Organization.objects.create(
                 organization_id=new_id,
-                name=formatted_name,
-                full_name=formatted_name,
-                short_name=formatted_name[:500] if len(formatted_name) > 500 else formatted_name,
+                name=org_name,
+                full_name=org_name,
+                short_name=org_name[:500] if len(org_name) > 500 else org_name,
                 slug=unique_slug,
                 register_opk=False,
                 strategic=False,
@@ -903,189 +718,16 @@ class BaseFIPSParser:
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"  Ошибка создания Organization: {e}"))
             return None
-    
-    def process_entity(self, entity_name, ip_object):
-        if pd.isna(entity_name) or not entity_name:
-            return False
-        
-        entity_type = self.type_detector.detect_type(entity_name)
-        
-        if entity_type == 'person':
-            person = self.find_or_create_person_from_name(entity_name)
-            if person:
-                ip_object.owner_persons.add(person)
-                self.stdout.write(f"        ✅ Физлицо: {person.get_full_name()}")
-                return True
-        else:
-            org = self.find_or_create_organization(entity_name)
-            if org:
-                self.stdout.write(f"        ✅ Организация: {org.name[:50]}...")
-                return True
-        
-        return False
-    
-    def process_holders(self, holders_list, ip_object):
-        if not holders_list:
-            return
-        
-        for holder_name in holders_list:
-            self.process_entity(holder_name, ip_object)
 
 
 class InventionParser(BaseFIPSParser):
-    """Парсер для изобретений"""
+    """Парсер для изобретений с пакетной обработкой"""
     
     def get_ip_type(self):
         return IPType.objects.filter(slug='invention').first()
     
     def get_required_columns(self):
         return ['registration number', 'invention name']
-    
-    def process_row(self, row, catalogue, ip_type):
-        registration_number = self.clean_string(row.get('registration number'))
-        
-        if not registration_number:
-            return 'skipped'
-        
-        # Проверка по дате обновления
-        if self.should_skip_by_date(registration_number, catalogue.upload_date.date()):
-            return 'skipped_by_date'
-        
-        self.stdout.write(f"\n  📄 Обработка патента №{registration_number}")
-        
-        name = self.clean_string(row.get('invention name'))
-        if name:
-            name = self.rid_formatter.format(name)
-        else:
-            name = f"Изобретение №{registration_number}"
-        
-        self.stdout.write(f"     Название: {name[:50]}...")
-        
-        application_date = self.parse_date(row.get('application date'))
-        registration_date = self.parse_date(row.get('registration date'))
-        patent_starting_date = self.parse_date(row.get('patent starting date'))
-        expiration_date = self.parse_date(row.get('expiration date'))
-        
-        if application_date:
-            self.stdout.write(f"     Дата подачи: {application_date}")
-        if registration_date:
-            self.stdout.write(f"     Дата регистрации: {registration_date}")
-        
-        actual = self.parse_bool(row.get('actual'))
-        self.stdout.write(f"     Статус: {'Активен' if actual else 'Не активен'}")
-        
-        publication_url = self.clean_string(row.get('publication URL'))
-        abstract = self.clean_string(row.get('abstract'))
-        claims = self.clean_string(row.get('claims'))
-        
-        creation_year = None
-        if application_date:
-            creation_year = application_date.year
-        elif registration_date:
-            creation_year = registration_date.year
-        
-        try:
-            ip_object, created = IPObject.objects.get_or_create(
-                registration_number=registration_number,
-                ip_type=ip_type,
-                defaults={
-                    'name': name,
-                    'application_date': application_date,
-                    'registration_date': registration_date,
-                    'patent_starting_date': patent_starting_date,
-                    'expiration_date': expiration_date,
-                    'actual': actual,
-                    'publication_url': publication_url,
-                    'abstract': abstract,
-                    'claims': claims,
-                    'creation_year': creation_year,
-                }
-            )
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"  Ошибка создания IPObject {registration_number}: {e}"))
-            return 'skipped'
-        
-        if self.command.dry_run:
-            return 'created' if created else 'updated'
-        
-        if not created:
-            update_fields = []
-            
-            if name and ip_object.name != name:
-                ip_object.name = name
-                update_fields.append('name')
-            
-            if application_date and ip_object.application_date != application_date:
-                ip_object.application_date = application_date
-                update_fields.append('application_date')
-            
-            if registration_date and ip_object.registration_date != registration_date:
-                ip_object.registration_date = registration_date
-                update_fields.append('registration_date')
-            
-            if patent_starting_date and ip_object.patent_starting_date != patent_starting_date:
-                ip_object.patent_starting_date = patent_starting_date
-                update_fields.append('patent_starting_date')
-            
-            if expiration_date and ip_object.expiration_date != expiration_date:
-                ip_object.expiration_date = expiration_date
-                update_fields.append('expiration_date')
-            
-            if ip_object.actual != actual:
-                ip_object.actual = actual
-                update_fields.append('actual')
-            
-            if publication_url and ip_object.publication_url != publication_url:
-                ip_object.publication_url = publication_url
-                update_fields.append('publication_url')
-            
-            if abstract and ip_object.abstract != abstract:
-                ip_object.abstract = abstract
-                update_fields.append('abstract')
-            
-            if claims and ip_object.claims != claims:
-                ip_object.claims = claims
-                update_fields.append('claims')
-            
-            if creation_year and ip_object.creation_year != creation_year:
-                ip_object.creation_year = creation_year
-                update_fields.append('creation_year')
-            
-            if update_fields:
-                ip_object.save(update_fields=update_fields)
-                self.stdout.write(f"     Обновлено полей: {len(update_fields)}")
-        
-        # Обработка авторов
-        authors_str = row.get('authors')
-        if not pd.isna(authors_str) and authors_str:
-            authors_data = self.parse_authors(authors_str)
-            if authors_data:
-                self.stdout.write(f"     👥 Авторы: {len(authors_data)} чел.")
-                for author_data in authors_data:
-                    person = self.find_or_create_person(author_data)
-                    if person:
-                        ip_object.authors.add(person)
-                        self.stdout.write(f"        Автор: {author_data['full_name']}")
-            else:
-                self.stdout.write("     👥 Авторы: нет данных")
-        else:
-            self.stdout.write("     👥 Авторы: нет данных")
-        
-        # Обработка патентообладателей
-        holders_str = row.get('patent holders')
-        if not pd.isna(holders_str) and holders_str:
-            holders_list = self.parse_patent_holders(holders_str)
-            if holders_list:
-                self.stdout.write(f"     🏢 Патентообладатели: {len(holders_list)}")
-                for holder_name in holders_list:
-                    self.stdout.write(f"        Анализ: {holder_name[:100]}...")
-                    self.process_entity(holder_name, ip_object)
-            else:
-                self.stdout.write("     🏢 Патентообладатели: нет данных")
-        else:
-            self.stdout.write("     🏢 Патентообладатели: нет данных")
-        
-        return 'created' if created else 'updated'
     
     def parse_dataframe(self, df, catalogue):
         self.stdout.write(self.style.SUCCESS("  🔄 Начинаем парсинг изобретений..."))
@@ -1105,36 +747,214 @@ class InventionParser(BaseFIPSParser):
             stats['errors'] += 1
             return stats
         
-        # Сбрасываем счетчик пропусков по дате
-        self.skipped_by_date = 0
+        # Получаем дату загрузки каталога
+        upload_date = catalogue.upload_date.date() if catalogue.upload_date else None
         
-        with tqdm(total=len(df), desc="  Обработка записей", unit=" зап") as pbar:
+        # ШАГ 1: Собираем все регистрационные номера
+        all_reg_numbers = []
+        reg_num_to_row = {}
+        
+        with tqdm(total=len(df), desc="  📥 Чтение CSV", unit=" зап") as pbar:
             for idx, row in df.iterrows():
+                reg_num = self.clean_string(row.get('registration number'))
+                if reg_num:
+                    all_reg_numbers.append(reg_num)
+                    reg_num_to_row[reg_num] = row
+                pbar.update(1)
+        
+        self.stdout.write(f"  📊 Всего записей в CSV: {len(all_reg_numbers)}")
+        
+        # ШАГ 2: Загружаем существующие записи ОДНИМ запросом
+        existing_objects = {}
+        if all_reg_numbers:
+            self.stdout.write("  🔍 Загрузка существующих записей из БД...")
+            for obj in IPObject.objects.filter(
+                registration_number__in=all_reg_numbers,
+                ip_type=ip_type
+            ).select_related('ip_type'):
+                existing_objects[obj.registration_number] = obj
+        
+        self.stdout.write(f"  📊 Найдено в БД: {len(existing_objects)}")
+        
+        # ШАГ 3: Подготавливаем данные для пакетной обработки
+        to_create = []
+        to_update = []
+        skipped_by_date = []
+        error_reg_numbers = []
+        
+        # Кэши для авторов и правообладателей
+        authors_cache = defaultdict(list)
+        holders_cache = defaultdict(list)
+        
+        with tqdm(total=len(reg_num_to_row), desc="  🔄 Подготовка данных", unit=" зап") as pbar:
+            for reg_num, row in reg_num_to_row.items():
                 try:
-                    result = self.process_row(row, catalogue, ip_type)
+                    # Проверка по дате
+                    if not self.command.force and upload_date and reg_num in existing_objects:
+                        existing = existing_objects[reg_num]
+                        if existing.updated_at and existing.updated_at.date() >= upload_date:
+                            skipped_by_date.append(reg_num)
+                            pbar.update(1)
+                            continue
                     
-                    if result == 'created':
-                        stats['created'] += 1
-                    elif result == 'updated':
-                        stats['updated'] += 1
-                    elif result == 'skipped_by_date':
-                        stats['skipped_by_date'] += 1
-                        stats['skipped'] += 1
-                    elif result == 'skipped':
-                        stats['skipped'] += 1
+                    # Форматируем название
+                    name = self.clean_string(row.get('invention name'))
+                    if name:
+                        name = self.rid_formatter.format(name)
+                    else:
+                        name = f"Изобретение №{reg_num}"
                     
-                    stats['processed'] += 1
+                    # Парсим даты
+                    application_date = self.parse_date(row.get('application date'))
+                    registration_date = self.parse_date(row.get('registration date'))
+                    patent_starting_date = self.parse_date(row.get('patent starting date'))
+                    expiration_date = self.parse_date(row.get('expiration date'))
+                    actual = self.parse_bool(row.get('actual'))
+                    publication_url = self.clean_string(row.get('publication URL'))
+                    abstract = self.clean_string(row.get('abstract'))
+                    claims = self.clean_string(row.get('claims'))
+                    
+                    creation_year = None
+                    if application_date:
+                        creation_year = application_date.year
+                    elif registration_date:
+                        creation_year = registration_date.year
+                    
+                    # Подготовка данных
+                    obj_data = {
+                        'registration_number': reg_num,
+                        'ip_type': ip_type,
+                        'name': name,
+                        'application_date': application_date,
+                        'registration_date': registration_date,
+                        'patent_starting_date': patent_starting_date,
+                        'expiration_date': expiration_date,
+                        'actual': actual,
+                        'publication_url': publication_url,
+                        'abstract': abstract,
+                        'claims': claims,
+                        'creation_year': creation_year,
+                    }
+                    
+                    if reg_num in existing_objects:
+                        to_update.append(obj_data)
+                    else:
+                        to_create.append(obj_data)
+                    
+                    # Сохраняем авторов и правообладателей
+                    authors_str = row.get('authors')
+                    if not pd.isna(authors_str) and authors_str:
+                        authors_cache[reg_num] = self.parse_authors(authors_str)
+                    
+                    holders_str = row.get('patent holders')
+                    if not pd.isna(holders_str) and holders_str:
+                        holders_cache[reg_num] = self.parse_patent_holders(holders_str)
                     
                 except Exception as e:
-                    stats['errors'] += 1
-                    reg_num = row.get('registration number', 'N/A')
-                    self.stdout.write(self.style.ERROR(f"\n  ❌ Ошибка в записи {reg_num}: {e}"))
-                    logger.error(f"Error processing invention {reg_num}: {e}", exc_info=True)
+                    error_reg_numbers.append(reg_num)
+                    self.stdout.write(self.style.ERROR(f"\n  ❌ Ошибка подготовки записи {reg_num}: {e}"))
+                    logger.error(f"Error preparing invention {reg_num}: {e}", exc_info=True)
                 
-                finally:
-                    pbar.update(1)
+                pbar.update(1)
         
-        stats['skipped_by_date'] = self.skipped_by_date
+        stats['skipped_by_date'] = len(skipped_by_date)
+        stats['skipped'] += len(skipped_by_date)
+        stats['errors'] = len(error_reg_numbers)
+        
+        # ШАГ 4: Пакетное создание новых записей
+        if to_create and not self.command.dry_run:
+            self.stdout.write(f"  📦 Создание {len(to_create)} записей...")
+            create_objects = [IPObject(**data) for data in to_create]
+            
+            batch_size = 1000
+            created_count = 0
+            
+            with tqdm(total=len(create_objects), desc="     Создание", unit=" зап") as pbar:
+                for i in range(0, len(create_objects), batch_size):
+                    batch = create_objects[i:i+batch_size]
+                    IPObject.objects.bulk_create(batch, batch_size=batch_size)
+                    created_count += len(batch)
+                    pbar.update(len(batch))
+            
+            stats['created'] = created_count
+            
+            # Обновляем кэш новыми объектами
+            self.stdout.write("     Обновление кэша...")
+            for obj in IPObject.objects.filter(
+                registration_number__in=[d['registration_number'] for d in to_create],
+                ip_type=ip_type
+            ):
+                existing_objects[obj.registration_number] = obj
+        
+        # ШАГ 5: Пакетное обновление существующих записей
+        if to_update and not self.command.dry_run:
+            self.stdout.write(f"  📦 Обновление {len(to_update)} записей...")
+            updated_count = 0
+            
+            with tqdm(total=len(to_update), desc="     Обновление", unit=" зап") as pbar:
+                for data in to_update:
+                    obj = existing_objects[data['registration_number']]
+                    update_fields = []
+                    
+                    if obj.name != data['name']:
+                        obj.name = data['name']
+                        update_fields.append('name')
+                    
+                    if obj.application_date != data['application_date']:
+                        obj.application_date = data['application_date']
+                        update_fields.append('application_date')
+                    
+                    if obj.registration_date != data['registration_date']:
+                        obj.registration_date = data['registration_date']
+                        update_fields.append('registration_date')
+                    
+                    if obj.patent_starting_date != data['patent_starting_date']:
+                        obj.patent_starting_date = data['patent_starting_date']
+                        update_fields.append('patent_starting_date')
+                    
+                    if obj.expiration_date != data['expiration_date']:
+                        obj.expiration_date = data['expiration_date']
+                        update_fields.append('expiration_date')
+                    
+                    if obj.actual != data['actual']:
+                        obj.actual = data['actual']
+                        update_fields.append('actual')
+                    
+                    if obj.publication_url != data['publication_url']:
+                        obj.publication_url = data['publication_url']
+                        update_fields.append('publication_url')
+                    
+                    if obj.abstract != data['abstract']:
+                        obj.abstract = data['abstract']
+                        update_fields.append('abstract')
+                    
+                    if obj.claims != data['claims']:
+                        obj.claims = data['claims']
+                        update_fields.append('claims')
+                    
+                    if obj.creation_year != data['creation_year']:
+                        obj.creation_year = data['creation_year']
+                        update_fields.append('creation_year')
+                    
+                    if update_fields:
+                        obj.save(update_fields=update_fields)
+                        updated_count += 1
+                    
+                    pbar.update(1)
+            
+            stats['updated'] = updated_count
+        
+        # ШАГ 6: Пакетная обработка авторов
+        if authors_cache and not self.command.dry_run:
+            self.stdout.write(f"  📦 Обработка авторов ({len(authors_cache)} записей)...")
+            self._process_authors_batch(existing_objects, authors_cache)
+        
+        # ШАГ 7: Пакетная обработка патентообладателей
+        if holders_cache and not self.command.dry_run:
+            self.stdout.write(f"  📦 Обработка патентообладателей ({len(holders_cache)} записей)...")
+            self._process_holders_batch(existing_objects, holders_cache)
+        
+        stats['processed'] = len(df) - stats['skipped'] - stats['errors']
         
         self.stdout.write(self.style.SUCCESS(f"  ✅ Парсинг изобретений завершен"))
         self.stdout.write(f"     Создано: {stats['created']}, Обновлено: {stats['updated']}, "
@@ -1142,6 +962,449 @@ class InventionParser(BaseFIPSParser):
                          f"Ошибок: {stats['errors']}")
         
         return stats
+    
+    def _process_authors_batch(self, existing_objects, authors_cache):
+        """СУПЕР-БЫСТРАЯ пакетная обработка авторов"""
+        self.stdout.write(f"     ⚡ Быстрая обработка авторов...")
+        
+        # ШАГ 1: Собираем ВСЕХ уникальных авторов
+        self.stdout.write("        Шаг 1: Сбор уникальных авторов...")
+        author_to_key = {}
+        total_relations = 0
+        
+        for reg_num, authors_data in authors_cache.items():
+            ip_object = existing_objects.get(reg_num)
+            if not ip_object:
+                continue
+            
+            for author_data in authors_data:
+                key = f"{author_data['last_name']}|{author_data['first_name']}|{author_data['middle_name']}"
+                if key not in author_to_key:
+                    author_to_key[key] = {
+                        'data': author_data,
+                        'ip_objects': []
+                    }
+                author_to_key[key]['ip_objects'].append(ip_object)
+                total_relations += 1
+        
+        all_keys = list(author_to_key.keys())
+        self.stdout.write(f"        Уникальных авторов: {len(all_keys)}, всего связей: {total_relations}")
+        
+        # ШАГ 2: Находим существующих людей в БД (ПАЧКАМИ по 50)
+        self.stdout.write("        Шаг 2: Поиск в БД...")
+        existing_people = {}
+        batch_size = 50
+        
+        for i in range(0, len(all_keys), batch_size):
+            batch_keys = all_keys[i:i+batch_size]
+            
+            # Строим запрос для одной пачки
+            name_conditions = models.Q()
+            for key in batch_keys:
+                last, first, middle = key.split('|')
+                if middle:
+                    name_conditions |= models.Q(
+                        last_name=last,
+                        first_name=first,
+                        middle_name=middle
+                    )
+                else:
+                    name_conditions |= models.Q(
+                        last_name=last,
+                        first_name=first,
+                        middle_name__isnull=True
+                    ) | models.Q(
+                        last_name=last,
+                        first_name=first,
+                        middle_name=''
+                    )
+            
+            # Выполняем запрос
+            for person in Person.objects.filter(name_conditions):
+                key = f"{person.last_name}|{person.first_name}|{person.middle_name or ''}"
+                existing_people[key] = person
+                self.person_cache[key] = person
+            
+            if (i // batch_size) % 10 == 0:
+                self.stdout.write(f"           Обработано {min(i+batch_size, len(all_keys))}/{len(all_keys)} ключей")
+        
+        self.stdout.write(f"        Найдено существующих: {len(existing_people)}")
+        
+        # ШАГ 3: Создаем новых людей
+        self.stdout.write("        Шаг 3: Подготовка новых авторов...")
+        people_to_create = []
+        key_to_new_person = {}
+        
+        # Получаем максимальный ID один раз
+        max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
+        next_id = max_id + 1
+        
+        # Собираем существующие slug-и
+        existing_slugs = set(Person.objects.values_list('slug', flat=True))
+        
+        for key, info in author_to_key.items():
+            if key not in existing_people:
+                author_data = info['data']
+                
+                # Генерируем slug
+                name_parts = [author_data['last_name'], author_data['first_name']]
+                if author_data['middle_name']:
+                    name_parts.append(author_data['middle_name'])
+                
+                base_slug = slugify(' '.join(name_parts).strip())
+                if not base_slug:
+                    base_slug = 'person'
+                
+                # Проверяем уникальность slug
+                unique_slug = base_slug
+                counter = 1
+                while unique_slug in existing_slugs or any(p.slug == unique_slug for p in people_to_create):
+                    unique_slug = f"{base_slug}-{counter}"
+                    counter += 1
+                
+                person = Person(
+                    ceo_id=next_id,
+                    ceo=author_data['full_name'],
+                    last_name=author_data['last_name'],
+                    first_name=author_data['first_name'],
+                    middle_name=author_data['middle_name'] or '',
+                    slug=unique_slug
+                )
+                people_to_create.append(person)
+                key_to_new_person[key] = person
+                next_id += 1
+                existing_slugs.add(unique_slug)
+        
+        self.stdout.write(f"        Новых авторов для создания: {len(people_to_create)}")
+        
+        # ШАГ 4: Массовое создание людей
+        if people_to_create:
+            self.stdout.write(f"        Шаг 4: Создание новых авторов...")
+            batch_size = 500
+            created_count = 0
+            
+            for i in range(0, len(people_to_create), batch_size):
+                batch = people_to_create[i:i+batch_size]
+                Person.objects.bulk_create(batch, batch_size=batch_size)
+                created_count += len(batch)
+                self.stdout.write(f"           Создано {created_count}/{len(people_to_create)}")
+            
+            # Обновляем кэш
+            for person in people_to_create:
+                key = f"{person.last_name}|{person.first_name}|{person.middle_name}"
+                self.person_cache[key] = person
+        
+        # ШАГ 5: Подготавливаем связи (УБИРАЕМ ДУБЛИКАТЫ)
+        self.stdout.write("        Шаг 5: Подготовка связей...")
+        
+        # Используем множество для уникальных пар (ip_id, person_id)
+        unique_pairs = set()
+        through_objs = []
+        
+        for key, info in author_to_key.items():
+            person = existing_people.get(key) or key_to_new_person.get(key)
+            if not person:
+                self.stdout.write(f"           ⚠️ Не найден person для ключа: {key}")
+                continue
+            
+            # Убираем дубликаты IP-объектов для одного автора
+            unique_ip_objects = {}
+            for ip_object in info['ip_objects']:
+                unique_ip_objects[ip_object.pk] = ip_object
+            
+            for ip_object in unique_ip_objects.values():
+                pair = (ip_object.pk, person.pk)
+                if pair not in unique_pairs:
+                    unique_pairs.add(pair)
+                    through_objs.append(
+                        IPObject.authors.through(
+                            ipobject_id=ip_object.pk,
+                            person_id=person.pk
+                        )
+                    )
+        
+        self.stdout.write(f"        Всего уникальных связей для создания: {len(through_objs)}")
+        
+        # ШАГ 6: Массовое создание связей
+        if through_objs:
+            self.stdout.write(f"        Шаг 6: Создание связей...")
+            
+            # Очищаем существующие связи
+            ip_ids = list(set(obj.ipobject_id for obj in through_objs))
+            self.stdout.write(f"           Очистка связей для {len(ip_ids)} IP-объектов")
+            deleted = IPObject.authors.through.objects.filter(
+                ipobject_id__in=ip_ids
+            ).delete()
+            self.stdout.write(f"           Удалено связей: {deleted[0] if deleted else 0}")
+            
+            # Массовое создание пачками
+            batch_size = 1000
+            created_count = 0
+            
+            for i in range(0, len(through_objs), batch_size):
+                batch = through_objs[i:i+batch_size]
+                try:
+                    IPObject.authors.through.objects.bulk_create(batch, batch_size=batch_size)
+                    created_count += len(batch)
+                    self.stdout.write(f"           Создано {created_count}/{len(through_objs)} связей")
+                except Exception as e:
+                    self.stdout.write(f"           ❌ Ошибка при создании пачки: {e}")
+                    # Пробуем создать по одному, чтобы найти проблемную запись
+                    for obj in batch:
+                        try:
+                            obj.save()
+                            created_count += 1
+                        except Exception as e2:
+                            self.stdout.write(f"              ⚠️ Не удалось создать связь {obj.ipobject_id}-{obj.person_id}: {e2}")
+        
+        self.stdout.write(f"        ✅ Обработка авторов завершена")
+    
+    def _process_holders_batch(self, existing_objects, holders_cache):
+        """СУПЕР-БЫСТРАЯ пакетная обработка правообладателей"""
+        self.stdout.write(f"     ⚡ Быстрая обработка правообладателей...")
+        
+        # ШАГ 1: Собираем всех уникальных правообладателей
+        all_holders = set()
+        for holders_list in holders_cache.values():
+            all_holders.update(holders_list)
+        
+        self.stdout.write(f"        Уникальных правообладателей: {len(all_holders)}")
+        
+        # ШАГ 2: Разделяем на людей и организации
+        person_holders = []
+        org_holders = []
+        
+        with tqdm(total=len(all_holders), desc="        Определение типов", unit=" об") as pbar:
+            for holder in all_holders:
+                if self.type_detector.detect_type(holder) == 'person':
+                    person_holders.append(holder)
+                else:
+                    org_holders.append(holder)
+                pbar.update(1)
+        
+        self.stdout.write(f"        Люди: {len(person_holders)}, Организации: {len(org_holders)}")
+        
+        # ШАГ 3: Быстрая обработка организаций
+        org_map = {}
+        if org_holders:
+            self.stdout.write(f"        Поиск/создание организаций...")
+            
+            # Сначала ищем существующие организации одним запросом
+            existing_orgs = {}
+            for org in Organization.objects.filter(name__in=org_holders):
+                existing_orgs[org.name] = org
+                self.organization_cache[org.name] = org
+            
+            self.stdout.write(f"           Найдено существующих: {len(existing_orgs)}")
+            
+            # Создаем новые организации
+            orgs_to_create = []
+            for holder in org_holders:
+                if holder not in existing_orgs:
+                    # Проверяем кэш
+                    if holder in self.organization_cache:
+                        org_map[holder] = self.organization_cache[holder]
+                    else:
+                        # Создаем новую
+                        max_id = Organization.objects.aggregate(models.Max('organization_id'))['organization_id__max'] or 0
+                        new_id = max_id + len(orgs_to_create) + 1
+                        
+                        base_slug = slugify(holder[:50])
+                        if not base_slug:
+                            base_slug = 'organization'
+                        
+                        unique_slug = base_slug
+                        counter = 1
+                        while Organization.objects.filter(slug=unique_slug).exists() or any(o.slug == unique_slug for o in orgs_to_create):
+                            unique_slug = f"{base_slug}-{counter}"
+                            counter += 1
+                        
+                        org = Organization(
+                            organization_id=new_id,
+                            name=holder,
+                            full_name=holder,
+                            short_name=holder[:500] if len(holder) > 500 else holder,
+                            slug=unique_slug,
+                            register_opk=False,
+                            strategic=False,
+                        )
+                        orgs_to_create.append(org)
+                        self.organization_cache[holder] = org
+            
+            # Массовое создание организаций
+            if orgs_to_create:
+                self.stdout.write(f"           Создание {len(orgs_to_create)} новых организаций...")
+                batch_size = 500
+                for i in range(0, len(orgs_to_create), batch_size):
+                    batch = orgs_to_create[i:i+batch_size]
+                    Organization.objects.bulk_create(batch, batch_size=batch_size)
+                
+                # Обновляем кэш
+                for org in orgs_to_create:
+                    self.organization_cache[org.name] = org
+            
+            # Финальный словарь для маппинга
+            for holder in org_holders:
+                org_map[holder] = self.organization_cache.get(holder)
+        
+        # ШАГ 4: Быстрая обработка людей (аналогично авторам)
+        person_map = {}
+        if person_holders:
+            self.stdout.write(f"        Поиск/создание людей...")
+            
+            # Ищем существующих людей
+            existing_people = {}
+            
+            # Разбиваем на пачки для поиска
+            batch_size = 100
+            for i in range(0, len(person_holders), batch_size):
+                batch_holders = person_holders[i:i+batch_size]
+                
+                # Пробуем найти по имени
+                for holder in batch_holders:
+                    # Парсим имя
+                    parts = holder.split()
+                    if len(parts) >= 2:
+                        last_name = parts[0]
+                        first_name = parts[1]
+                        middle_name = parts[2] if len(parts) > 2 else ''
+                        
+                        # Ищем в БД
+                        persons = Person.objects.filter(
+                            last_name=last_name,
+                            first_name=first_name
+                        )
+                        if middle_name:
+                            persons = persons.filter(middle_name=middle_name)
+                        
+                        person = persons.first()
+                        if person:
+                            existing_people[holder] = person
+                            self.person_cache[holder] = person
+            
+            self.stdout.write(f"           Найдено существующих: {len(existing_people)}")
+            
+            # Создаем новых людей
+            people_to_create = []
+            for holder in person_holders:
+                if holder not in existing_people and holder not in self.person_cache:
+                    # Парсим имя
+                    parts = holder.split()
+                    if len(parts) >= 2:
+                        last_name = parts[0]
+                        first_name = parts[1]
+                        middle_name = parts[2] if len(parts) > 2 else ''
+                        
+                        # Генерируем slug
+                        name_parts = [last_name, first_name]
+                        if middle_name:
+                            name_parts.append(middle_name)
+                        
+                        base_slug = slugify(' '.join(name_parts))
+                        if not base_slug:
+                            base_slug = 'person'
+                        
+                        unique_slug = base_slug
+                        counter = 1
+                        while Person.objects.filter(slug=unique_slug).exists() or any(p.slug == unique_slug for p in people_to_create):
+                            unique_slug = f"{base_slug}-{counter}"
+                            counter += 1
+                        
+                        max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
+                        new_id = max_id + len(people_to_create) + 1
+                        
+                        person = Person(
+                            ceo_id=new_id,
+                            ceo=holder,
+                            last_name=last_name,
+                            first_name=first_name,
+                            middle_name=middle_name or '',
+                            slug=unique_slug
+                        )
+                        people_to_create.append(person)
+                        self.person_cache[holder] = person
+            
+            # Массовое создание людей
+            if people_to_create:
+                self.stdout.write(f"           Создание {len(people_to_create)} новых людей...")
+                batch_size = 500
+                for i in range(0, len(people_to_create), batch_size):
+                    batch = people_to_create[i:i+batch_size]
+                    Person.objects.bulk_create(batch, batch_size=batch_size)
+            
+            # Финальный словарь
+            for holder in person_holders:
+                person_map[holder] = self.person_cache.get(holder)
+        
+        # ШАГ 5: Подготовка связей (УБИРАЕМ ДУБЛИКАТЫ)
+        self.stdout.write(f"        Подготовка связей...")
+        
+        org_relations = set()
+        person_relations = set()
+        
+        for reg_num, holders_list in holders_cache.items():
+            ip_object = existing_objects.get(reg_num)
+            if not ip_object:
+                continue
+            
+            for holder in holders_list:
+                if holder in org_map and org_map[holder]:
+                    org_relations.add((ip_object.pk, org_map[holder].pk))
+                elif holder in person_map and person_map[holder]:
+                    person_relations.add((ip_object.pk, person_map[holder].pk))
+        
+        self.stdout.write(f"        Уникальных связей с организациями: {len(org_relations)}")
+        self.stdout.write(f"        Уникальных связей с людьми: {len(person_relations)}")
+        
+        # ШАГ 6: Массовое создание связей с организациями
+        if org_relations:
+            self.stdout.write(f"        Создание связей с организациями...")
+            
+            # Очищаем существующие связи
+            ip_ids = list(set(ip_id for ip_id, _ in org_relations))
+            IPObject.owner_organizations.through.objects.filter(
+                ipobject_id__in=ip_ids
+            ).delete()
+            
+            # Создаем новые
+            through_objs = [
+                IPObject.owner_organizations.through(
+                    ipobject_id=ip_id,
+                    organization_id=org_id
+                )
+                for ip_id, org_id in org_relations
+            ]
+            
+            batch_size = 1000
+            for i in range(0, len(through_objs), batch_size):
+                batch = through_objs[i:i+batch_size]
+                IPObject.owner_organizations.through.objects.bulk_create(batch, batch_size=batch_size)
+        
+        # ШАГ 7: Массовое создание связей с людьми
+        if person_relations:
+            self.stdout.write(f"        Создание связей с людьми...")
+            
+            # Очищаем существующие связи
+            ip_ids = list(set(ip_id for ip_id, _ in person_relations))
+            IPObject.owner_persons.through.objects.filter(
+                ipobject_id__in=ip_ids
+            ).delete()
+            
+            # Создаем новые
+            through_objs = [
+                IPObject.owner_persons.through(
+                    ipobject_id=ip_id,
+                    person_id=person_id
+                )
+                for ip_id, person_id in person_relations
+            ]
+            
+            batch_size = 1000
+            for i in range(0, len(through_objs), batch_size):
+                batch = through_objs[i:i+batch_size]
+                IPObject.owner_persons.through.objects.bulk_create(batch, batch_size=batch_size)
+        
+        self.stdout.write(f"        ✅ Обработка правообладателей завершена")
 
 
 class UtilityModelParser(BaseFIPSParser):
