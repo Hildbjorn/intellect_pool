@@ -7,7 +7,7 @@
 import logging
 import re
 from datetime import datetime
-from typing import Optional, Tuple, List, Dict, Any
+from typing import List, Dict, Any
 
 from django.db import models
 from django.core.management.base import BaseCommand, CommandError
@@ -16,20 +16,101 @@ from django.utils import timezone
 from tqdm import tqdm
 import pandas as pd
 import os
+import pymorphy2
+from pymorphy2 import MorphAnalyzer
 
 from intellectual_property.models import (
-    FipsOpenDataCatalogue, IPType, ProtectionDocumentType,
-    IPObject, AdditionalPatent, IPImage
+    FipsOpenDataCatalogue, IPType, IPObject
 )
 from core.models import (
-    City, Region, District, Person, Organization, 
+    Person, Organization, 
     FOIV, Country, RFRepresentative,
-    OrganizationNormalizationRule, ActivityType, CeoPosition
+    OrganizationNormalizationRule
 )
-from common.utils.text import TextUtils
-from common.utils.dates import DateUtils
 
 logger = logging.getLogger(__name__)
+
+
+class MorphAnalyzerWrapper:
+    """
+    Обертка для pymorphy2 с кэшированием результатов
+    """
+    _instance = None
+    _cache = {}
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.morph = pymorphy2.MorphAnalyzer()
+        return cls._instance
+    
+    def parse(self, word: str):
+        """Разбор слова с кэшированием"""
+        if word in self._cache:
+            return self._cache[word]
+        result = self.morph.parse(word)
+        self._cache[word] = result
+        return result
+    
+    def is_name(self, word: str) -> bool:
+        """Проверка, является ли слово именем собственным"""
+        if not word:
+            return False
+        parsed = self.parse(word)[0]
+        tags = str(parsed.tag)
+        return any(tag in tags for tag in ['Name', 'Surn', 'Patr'])
+    
+    def is_preposition(self, word: str) -> bool:
+        """Проверка, является ли слово предлогом/союзом"""
+        if not word:
+            return False
+        parsed = self.parse(word)[0]
+        return 'PREP' in str(parsed.tag) or 'CONJ' in str(parsed.tag)
+    
+    def normalize_case(self, word: str, is_first: bool = False) -> str:
+        """
+        Приведение слова к правильному регистру
+        """
+        if not word or len(word) <= 1:
+            return word
+        
+        # Если слово в верхнем регистре и длинное - возможно аббревиатура
+        if word.isupper() and len(word) > 1:
+            return word
+        
+        # Если слово содержит только одну букву (инициал)
+        if len(word) == 1:
+            return word.upper() + '.'
+        
+        # Очищаем от знаков препинания для анализа
+        clean_word = re.sub(r'[.,;:!?()\[\]{}"\']', '', word)
+        if not clean_word:
+            return word
+        
+        # Проверяем через морфологию
+        parsed = self.parse(clean_word)[0]
+        tags = str(parsed.tag)
+        
+        # Определяем регистр
+        if is_first:
+            # Первое слово - с большой буквы
+            result = clean_word[0].upper() + clean_word[1:].lower()
+        elif 'Name' in tags or 'Surn' in tags or 'Patr' in tags:
+            # Имена собственные - с большой буквы
+            result = clean_word[0].upper() + clean_word[1:].lower()
+        elif 'PREP' in tags or 'CONJ' in tags:
+            # Предлоги и союзы - с маленькой буквы
+            result = clean_word.lower()
+        else:
+            # Обычные слова - с маленькой буквы
+            result = clean_word.lower()
+        
+        # Добавляем обратно знаки препинания
+        if word != clean_word:
+            punctuation = word[len(clean_word):]
+            result += punctuation
+        
+        return result
 
 
 class OrganizationNormalizer:
@@ -39,6 +120,7 @@ class OrganizationNormalizer:
     
     def __init__(self):
         self.rules_cache = None
+        self.morph = MorphAnalyzerWrapper()
         self.load_rules()
     
     def load_rules(self):
@@ -115,70 +197,318 @@ class OrganizationNormalizer:
         keywords.extend([a.lower() for a in abbreviations if len(a) >= 2])
         
         return list(set(keywords))
+    
+    def format_organization_name(self, name: str) -> str:
+        """
+        Форматирование названия организации с правильным регистром
+        """
+        if not name:
+            return name
+        
+        # Список аббревиатур, которые всегда в верхнем регистре
+        ALWAYS_UPPER = {
+            'ООО', 'ЗАО', 'ОАО', 'АО', 'ПАО', 'НАО',
+            'ФГУП', 'ФГБУ', 'ФГАОУ', 'ФГАУ', 'ФГКУ',
+            'НИИ', 'КБ', 'ОКБ', 'СКБ', 'ЦКБ', 'ПКБ',
+            'НПО', 'НПП', 'НПФ', 'НПЦ', 'НИЦ',
+            'МУП', 'ГУП', 'ИЧП', 'ТОО', 'АОЗТ', 'АООТ',
+            'РФ', 'РАН', 'СО РАН', 'УрО РАН', 'ДВО РАН',
+            'МГУ', 'СПбГУ', 'МФТИ', 'МИФИ', 'МГТУ', 'МАИ',
+            'ФИАН', 'МИАН', 'ИПМ', 'ИПМех', 'ИППИ',
+            'ЦАГИ', 'ЦИАМ', 'ВИАМ', 'ВИЛС', 'ВИМС', 'ВНИИ'
+        }
+        
+        # Разбиваем на части по кавычкам
+        parts = re.split(r'(")', name)
+        result = []
+        in_quotes = False
+        
+        for part in parts:
+            if part == '"':
+                in_quotes = not in_quotes
+                result.append(part)
+            elif in_quotes:
+                # Часть внутри кавычек - форматируем как обычный текст
+                words = part.split()
+                formatted_words = []
+                for word in words:
+                    word_upper = word.upper()
+                    if word_upper in ALWAYS_UPPER:
+                        formatted_words.append(word_upper)
+                    elif self.morph.is_name(word):
+                        # Имена собственные - с большой буквы
+                        formatted_words.append(word[0].upper() + word[1:].lower())
+                    else:
+                        # Обычные слова - с маленькой буквы
+                        formatted_words.append(word.lower())
+                result.append(' '.join(formatted_words))
+            else:
+                # Часть вне кавычек - форматируем аббревиатуры и обычные слова
+                words = part.split()
+                formatted_words = []
+                for word in words:
+                    word_clean = word.strip('.,;:()')
+                    word_upper = word_clean.upper()
+                    if word_upper in ALWAYS_UPPER:
+                        formatted_words.append(word_upper)
+                    elif word_clean.isupper() and len(word_clean) > 1:
+                        # Неизвестная аббревиатура - оставляем как есть
+                        formatted_words.append(word_clean)
+                    else:
+                        # Обычные слова - оставляем как в оригинале
+                        formatted_words.append(word)
+                result.append(' '.join(formatted_words))
+        
+        return ''.join(result)
 
 
 class EntityTypeDetector:
     """
-    Детектор типов сущностей (физлицо или организация)
+    Детектор типов сущностей с использованием pymorphy2
     """
     
-    # Паттерны для русских ФИО
-    RUSSIAN_NAME_PATTERNS = [
-        r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+$',  # Иванов Иван Иванович
-        r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\.$',  # Иванов И.И.
-        r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+$',  # Иванов Иван
-        r'^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.$',  # Иванов И.
-        r'^[А-ЯЁ]\.[А-ЯЁ]\.\s+[А-ЯЁ][а-яё]+',  # И.И. Иванов
-    ]
+    def __init__(self):
+        self.morph = MorphAnalyzerWrapper()
     
-    # Паттерны для иностранных ФИО
-    FOREIGN_NAME_PATTERNS = [
-        r'^[A-Za-z]+\s+[A-Za-z]+$',  # John Smith
-        r'^[A-Za-z]+\s+[A-Za-z]+\s+[A-Za-z]+$',  # John Robert Smith
-        r'^[A-Za-z]+\s+[A-Z]\.\s*[A-Z]\.$',  # Smith J.R.
-        r'^[A-Z]\.\s*[A-Z]\.\s+[A-Za-z]+$',  # J.R. Smith
-    ]
-    
-    @classmethod
-    def is_person(cls, text: str) -> bool:
-        """Проверка, является ли текст физическим лицом"""
+    def is_person(self, text: str) -> bool:
+        """
+        Проверка, является ли текст физическим лицом
+        Использует морфологический анализ для определения имен собственных
+        """
         if not text or len(text) < 6:
             return False
         
         text = text.strip()
         
-        # Проверка по паттернам русских ФИО
-        for pattern in cls.RUSSIAN_NAME_PATTERNS:
-            if re.match(pattern, text, re.UNICODE):
-                return True
+        # Если есть явные признаки организации - сразу возвращаем False
+        org_indicators = ['ООО', 'ЗАО', 'АО', 'ПАО', 'ФГУП', 'ФГБУ', 
+                         'Общество', 'Компания', 'Корпорация', 'Завод', 'Институт']
+        if any(ind in text for ind in org_indicators):
+            return False
         
-        # Проверка по паттернам иностранных ФИО
-        for pattern in cls.FOREIGN_NAME_PATTERNS:
-            if re.match(pattern, text):
-                return True
+        # Разбиваем на слова
+        words = re.findall(r'[А-ЯЁA-Z][а-яёa-z]*\.?', text)
         
-        # Фамилия, Имя через запятую (иностранный формат)
-        if ',' in text:
-            parts = text.split(',')
-            if len(parts) == 2:
-                name_part = parts[0].strip()
-                surname_part = parts[1].strip()
-                if (len(name_part.split()) <= 2 and 
-                    len(surname_part.split()) <= 2 and
-                    not any(x in text for x in ['ООО', 'АО', 'ЗАО', 'Ltd', 'Inc'])):
-                    return True
+        # Если слов меньше 2 - не ФИО
+        if len(words) < 2:
+            return False
         
-        return False
+        # Проверяем каждое слово на принадлежность к именам
+        name_count = 0
+        for word in words:
+            clean_word = word.rstrip('.')
+            if self.morph.is_name(clean_word):
+                name_count += 1
+        
+        # Если большинство слов - имена, вероятно это ФИО
+        return name_count >= len(words) - 1
     
-    @classmethod
-    def detect_type(cls, text: str) -> str:
+    def detect_type(self, text: str) -> str:
         """
         Определение типа сущности
         Возвращает: 'person' или 'organization'
         """
-        if cls.is_person(text):
+        if self.is_person(text):
             return 'person'
         return 'organization'
+
+
+class RIDNameFormatter:
+    """
+    Класс для форматирования названий РИД с использованием pymorphy2
+    """
+    
+    def __init__(self):
+        self.morph = MorphAnalyzerWrapper()
+        
+        # Аббревиатуры, которые всегда остаются в верхнем регистре
+        self.KEEP_UPPER = {
+            # Химия и биология
+            'ДНК', 'РНК', 'ПЦР', 'ИФА', 'ЭДТА', 'АТФ', 'АДФ', 'НАД', 'НАДФ',
+            'COVID-19', 'SARS-COV-2', 'ВИЧ', 'СПИД',
+            
+            # Единицы измерения
+            '°C', '°F', 'K', 'М', 'СМ', 'ММ', 'КМ', 'КГ', 'Г', 'МГ', 'МКГ',
+            'Л', 'МЛ', 'МКЛ', 'С', 'МС', 'МКС', 'МИН', 'Ч', 'СУТ',
+            'ПА', 'КПА', 'МПА', 'ГПА', 'АТМ', 'БАР', 'ММ РТ. СТ.',
+            'А', 'В', 'ВТ', 'КВТ', 'МВТ', 'ГВТ', 'ОМ', 'Ф', 'ГН', 'ТЛ',
+            'БИТ', 'БАЙТ', 'КБ', 'МБ', 'ГБ', 'ТБ', 'ГЦ', 'КГЦ', 'МГЦ', 'ГГЦ',
+            
+            # Химические элементы
+            'H', 'HE', 'LI', 'BE', 'B', 'C', 'N', 'O', 'F', 'NE', 'NA', 'MG',
+            'AL', 'SI', 'P', 'S', 'CL', 'AR', 'K', 'CA', 'SC', 'TI', 'V',
+            'CR', 'MN', 'FE', 'CO', 'NI', 'CU', 'ZN', 'GA', 'GE', 'AS', 'SE',
+            'HCL', 'H2SO4', 'HNO3', 'H3PO4', 'NAOH', 'KOH', 'NH3', 'CO2',
+            
+            # Стандарты и технологии
+            'ГОСТ', 'ТУ', 'СНиП', 'СП', 'СанПиН', 'ISO', 'IEC', 'IEEE',
+            'USB', 'HDMI', 'WI-FI', 'LTE', '5G', 'CPU', 'GPU', 'RAM', 'ROM',
+            'CAD', 'CAM', 'CAE', 'PLM', 'PDM', 'ERP', 'CRM', 'MES',
+            
+            # Патентные классификации
+            'МПК', 'МКТУ', 'МКПО', 'НИОКР', 'РИД', 'ИС', 'ОИС', 'ФИПС',
+        }
+        
+        # Предлоги, союзы, частицы, которые всегда с маленькой буквы
+        self.LOWERCASE_WORDS = {
+            'в', 'на', 'с', 'со', 'у', 'к', 'ко', 'о', 'об', 'от', 'до',
+            'для', 'без', 'над', 'под', 'из', 'по', 'за', 'про', 'через',
+            'и', 'а', 'но', 'да', 'или', 'либо', 'же', 'как', 'так',
+            'что', 'чтобы', 'если', 'хотя', 'при', 'во', 'обо',
+            'and', 'or', 'but', 'if', 'then', 'else', 'for', 'to', 'with',
+            'by', 'from', 'at', 'in', 'on', 'of', 'the', 'a', 'an',
+        }
+    
+    def format(self, text: str) -> str:
+        """
+        Форматирование названия РИД с правильным регистром
+        """
+        if not text or not isinstance(text, str):
+            return text
+        
+        if len(text.strip()) <= 1:
+            return text
+        
+        # Разбиваем на предложения
+        sentences = re.split(r'(?<=[.!?])\s+(?=[А-ЯЁA-Z])', text)
+        formatted_sentences = []
+        
+        for sentence in sentences:
+            if not sentence.strip():
+                continue
+            
+            # Разбиваем на слова, сохраняя пробелы
+            words = re.split(r'(\s+)', sentence)
+            formatted_words = []
+            
+            is_first_word = True
+            
+            for word in words:
+                # Пробелы оставляем как есть
+                if word.isspace():
+                    formatted_words.append(word)
+                    continue
+                
+                # Обрабатываем слово
+                formatted_word = self._format_word(word, is_first_word)
+                formatted_words.append(formatted_word)
+                
+                # Следующее слово не будет первым в предложении
+                if not word.isspace():
+                    is_first_word = False
+            
+            formatted_sentences.append(''.join(formatted_words))
+        
+        result = ' '.join(formatted_sentences)
+        
+        # Очистка
+        result = re.sub(r'\s+([,;:.])', r'\1', result)
+        result = ' '.join(result.split())
+        
+        return result
+    
+    def _format_word(self, word: str, is_first: bool) -> str:
+        """
+        Форматирование отдельного слова
+        """
+        # Проверка на аббревиатуру
+        word_upper = word.upper().strip('.,;:!?()')
+        if word_upper in self.KEEP_UPPER:
+            return word_upper
+        
+        # Проверка на инициалы
+        if re.match(r'^[А-ЯЁA-Z]\.$', word) or re.match(r'^[А-ЯЁA-Z]\.[А-ЯЁA-Z]\.$', word):
+            return word.upper()
+        
+        # Проверка на числа
+        if word.isdigit():
+            return word
+        
+        # Проверка на числа с единицами измерения
+        unit_match = re.match(r'^(\d+(?:[.,]\d+)?)([а-яёa-z°]+)$', word, re.IGNORECASE)
+        if unit_match:
+            number, unit = unit_match.groups()
+            unit_upper = unit.upper()
+            if unit_upper in self.KEEP_UPPER:
+                return number + unit_upper
+            return number + unit.lower()
+        
+        # Проверка на слова через дефис
+        if '-' in word:
+            parts = word.split('-')
+            formatted_parts = []
+            for part in parts:
+                formatted_parts.append(self._format_word(part, False))
+            return '-'.join(formatted_parts)
+        
+        # Очистка от знаков препинания для анализа
+        clean_word = re.sub(r'[.,;:!?()]', '', word)
+        if not clean_word:
+            return word
+        
+        # Анализ через морфологию
+        word_lower = clean_word.lower()
+        
+        # Проверка на предлоги и союзы
+        if word_lower in self.LOWERCASE_WORDS or self.morph.is_preposition(clean_word):
+            result = word_lower
+        elif is_first:
+            # Первое слово - с большой буквы
+            result = clean_word[0].upper() + clean_word[1:].lower()
+        elif self.morph.is_name(clean_word):
+            # Имена собственные - с большой буквы
+            result = clean_word[0].upper() + clean_word[1:].lower()
+        else:
+            # Обычные слова - с маленькой буквы
+            result = clean_word.lower()
+        
+        # Добавляем обратно знаки препинания
+        if word != clean_word:
+            punctuation = word[len(clean_word):]
+            result += punctuation
+        
+        return result
+
+
+class PersonNameFormatter:
+    """
+    Класс для форматирования имен людей
+    """
+    
+    def __init__(self):
+        self.morph = MorphAnalyzerWrapper()
+    
+    def format(self, name: str) -> str:
+        """
+        Форматирование ФИО человека
+        ФОМИН АРТЕМ ВЛАДИМИРОВИЧ -> Фомин Артем Владимирович
+        """
+        if not name:
+            return name
+        
+        parts = name.split()
+        formatted_parts = []
+        
+        for part in parts:
+            if not part:
+                continue
+            
+            # Инициалы
+            if '.' in part:
+                initials = [p for p in part if p.isalpha()]
+                formatted_parts.append(''.join([i.upper() + '.' for i in initials]))
+                continue
+            
+            # Обычное слово
+            clean_part = part.strip('.')
+            if clean_part.isupper() and len(clean_part) > 1:
+                # Вероятно, фамилия или имя в верхнем регистре
+                formatted_parts.append(clean_part[0].upper() + clean_part[1:].lower())
+            else:
+                # Уже в правильном регистре или смешанном
+                formatted_parts.append(part)
+        
+        return ' '.join(formatted_parts)
 
 
 class BaseFIPSParser:
@@ -187,74 +517,17 @@ class BaseFIPSParser:
     Содержит общие методы для работы с данными.
     """
     
-    # Список терминов, которые должны оставаться в верхнем регистре для названий РИД
-    KEEP_UPPER_RID = [
-        # Химические и научные термины
-        'ДНК', 'РНК', 'ПЦР', 'ИФА', 'ЭДТА', 'АТФ', 'АДФ', 'НАД', 'НАДФ',
-        'ГИСТОН', 'ПРОТЕИН', 'ПЕПТИД', 'ПОЛИМЕР', 'МОНОМЕР',
-        'СПИН', 'ЯМР', 'ЭПР', 'ИК', 'УФ', 'ВУФ', 'ЭМИ', 'КПД',
-        'ЛАЗЕР', 'МАЗЕР', 'ФЕМТОСЕКУНДНЫЙ', 'ПИКОСЕКУНДНЫЙ',
-        
-        # Единицы измерения
-        '°C', '°F', 'K', 'М', 'СМ', 'ММ', 'КМ', 'КГ', 'Г', 'МГ', 'МКГ',
-        'Л', 'МЛ', 'МКЛ', 'С', 'МС', 'МКС', 'МИН', 'Ч', 'СУТ',
-        'ПА', 'КПА', 'МПА', 'ГПА', 'АТМ', 'БАР', 'ММ РТ. СТ.',
-        'А', 'В', 'ВТ', 'КВТ', 'МВТ', 'ГВТ', 'ОМ', 'Ф', 'ГН', 'ТЛ',
-        'БИТ', 'БАЙТ', 'КБ', 'МБ', 'ГБ', 'ТБ', 'ГЦ', 'КГЦ', 'МГЦ', 'ГГЦ',
-        
-        # Математические обозначения
-        'SIN', 'COS', 'TG', 'CTG', 'ARCSIN', 'ARCCOS', 'ARCTG', 'ARCCTG',
-        'LIM', 'INF', 'SUP', 'MAX', 'MIN', 'DET', 'KER', 'DIM', 'HOM',
-        
-        # Химические элементы и соединения
-        'H', 'HE', 'LI', 'BE', 'B', 'C', 'N', 'O', 'F', 'NE', 'NA', 'MG',
-        'AL', 'SI', 'P', 'S', 'CL', 'AR', 'K', 'CA', 'SC', 'TI', 'V',
-        'CR', 'MN', 'FE', 'CO', 'NI', 'CU', 'ZN', 'GA', 'GE', 'AS', 'SE',
-        'BR', 'KR', 'RB', 'SR', 'Y', 'ZR', 'NB', 'MO', 'TC', 'RU', 'RH',
-        'PD', 'AG', 'CD', 'IN', 'SN', 'SB', 'TE', 'I', 'XE', 'CS', 'BA',
-        'LA', 'CE', 'PR', 'ND', 'PM', 'SM', 'EU', 'GD', 'TB', 'DY', 'HO',
-        'ER', 'TM', 'YB', 'LU', 'HCL', 'H2SO4', 'HNO3', 'H3PO4', 'NAOH',
-        'KOH', 'NH3', 'CO2', 'CO', 'NO', 'NO2', 'SO2', 'SO3', 'H2O', 'H2O2',
-        
-        # Аббревиатуры организаций и стандартов
-        'ГОСТ', 'ТУ', 'ОСТ', 'СТП', 'СТО', 'СНиП', 'СП', 'СанПиН',
-        'ISO', 'IEC', 'IEEE', 'ANSI', 'DIN', 'BS', 'JIS', 'GOST', 'EN',
-        
-        # Модели и марки
-        'IPHONE', 'IPAD', 'MACBOOK', 'WINDOWS', 'LINUX', 'ANDROID', 'IOS',
-        'USB', 'HDMI', 'VGA', 'DVI', 'DISPLAYPORT', 'THUNDERBOLT',
-        'BLUETOOTH', 'WI-FI', 'WIFI', 'ZIGBEE', 'LORA', 'NB-IOT', 'LTE', '5G',
-        'CPU', 'GPU', 'RAM', 'ROM', 'SSD', 'HDD', 'BIOS', 'UEFI', 'PCIE',
-        
-        # Патентные классификации
-        'МПК', 'МКТУ', 'МКПО', 'НИОКР', 'РИД', 'ИС', 'ОИС', 'ФИПС', 'РОСПАТЕНТ',
-        
-        # Медицинские и биологические термины
-        'ВИЧ', 'СПИД', 'COVID-19', 'SARS-COV-2', 'ЭБОЛА', 'ГЕПАТИТ',
-        'МРТ', 'КТ', 'ПЭТ', 'УЗИ', 'ЭКГ', 'ЭЭГ', 'ЭМГ', 'ЭХО-КГ',
-        
-        # Технические термины
-        'ЧПУ', 'АСУ', 'ТП', 'АСУТП', 'SCADA', 'PLC', 'HMI', 'CNC',
-        'CAD', 'CAM', 'CAE', 'PLM', 'PDM', 'ERP', 'CRM', 'MES',
-    ]
-    
-    # Список предлогов, союзов и частиц, которые должны быть в нижнем регистре
-    LOWERCASE_WORDS = {
-        # Русские
-        'в', 'на', 'с', 'со', 'у', 'к', 'ко', 'о', 'об', 'от', 'до',
-        'для', 'без', 'над', 'под', 'из', 'по', 'за', 'про', 'через',
-        'и', 'а', 'но', 'да', 'или', 'либо', 'нибудь', 'же',
-        'как', 'так', 'что', 'чтобы', 'если', 'хотя',
-        
-        # Английские
-        'and', 'or', 'but', 'if', 'then', 'else', 'for', 'to', 'with',
-        'by', 'from', 'at', 'in', 'on', 'of', 'the', 'a', 'an',
-    }
-    
     def __init__(self, command):
         self.command = command
         self.stdout = command.stdout
         self.style = command.style
+        
+        # Инициализация анализаторов и форматеров
+        self.morph = MorphAnalyzerWrapper()
+        self.org_normalizer = OrganizationNormalizer()
+        self.type_detector = EntityTypeDetector()
+        self.rid_formatter = RIDNameFormatter()
+        self.person_formatter = PersonNameFormatter()
         
         # Кэши для оптимизации
         self.country_cache = {}
@@ -265,171 +538,6 @@ class BaseFIPSParser:
         self.city_cache = {}
         self.activity_type_cache = {}
         self.ceo_position_cache = {}
-        
-        # Детектор типов и нормализатор
-        self.type_detector = EntityTypeDetector()
-        self.org_normalizer = OrganizationNormalizer()
-    
-    def format_rid_name(self, name):
-        """
-        Приводит наименование РИД к правильному регистру согласно правилам русского языка.
-        Первое слово предложения - с большой буквы, остальные - с маленькой, кроме:
-        - Имен собственных (проверяются по контексту)
-        - Аббревиатур (из списка KEEP_UPPER_RID)
-        - Терминов в кавычках
-        
-        Пример: "СПОСОБ ПОЛУЧЕНИЯ ДНК" -> "Способ получения ДНК"
-        """
-        if not name or not isinstance(name, str):
-            return name
-        
-        # Если строка пустая или состоит из одного символа
-        if len(name.strip()) <= 1:
-            return name
-        
-        # Разбиваем на предложения (по точкам, но не сокращениям)
-        sentences = re.split(r'(?<=[.!?])\s+(?=[А-ЯЁA-Z])', name)
-        formatted_sentences = []
-        
-        for sentence_idx, sentence in enumerate(sentences):
-            if not sentence or len(sentence.strip()) == 0:
-                continue
-            
-            # Разбиваем на слова, сохраняя пробелы и знаки препинания
-            words_and_spaces = re.split(r'(\s+)', sentence)
-            formatted_words = []
-            
-            i = 0
-            while i < len(words_and_spaces):
-                word = words_and_spaces[i]
-                
-                # Если это пробел, просто добавляем
-                if re.match(r'^\s+$', word):
-                    formatted_words.append(word)
-                    i += 1
-                    continue
-                
-                # Пропускаем пустые слова
-                if not word or len(word.strip()) == 0:
-                    i += 1
-                    continue
-                
-                # Проверяем, является ли слово числом с единицей измерения
-                unit_match = re.match(r'^(\d+(?:[.,]\d+)?)([а-яёa-z°]+)$', word, re.IGNORECASE)
-                if unit_match:
-                    number, unit = unit_match.groups()
-                    unit_upper = unit.upper()
-                    if unit_upper in self.KEEP_UPPER_RID:
-                        formatted_words.append(number + unit_upper)
-                    else:
-                        formatted_words.append(number + unit.lower())
-                    i += 1
-                    continue
-                
-                # Проверяем, является ли слово инициалом
-                if re.match(r'^[А-ЯЁA-Z]\.$', word) or re.match(r'^[А-ЯЁA-Z]\.[А-ЯЁA-Z]\.$', word):
-                    formatted_words.append(word.upper())
-                    i += 1
-                    continue
-                
-                # Проверяем, состоит ли слово только из цифр
-                if word.isdigit():
-                    formatted_words.append(word)
-                    i += 1
-                    continue
-                
-                # Очищаем слово от знаков препинания для проверки
-                word_clean = re.sub(r'[.,;:!?()\[\]{}"\']', '', word)
-                if not word_clean:
-                    formatted_words.append(word)
-                    i += 1
-                    continue
-                
-                # Проверяем на наличие дефиса
-                if '-' in word_clean:
-                    parts = word_clean.split('-')
-                    formatted_parts = []
-                    for part in parts:
-                        if not part:
-                            continue
-                        part_upper = part.upper()
-                        if part_upper in self.KEEP_UPPER_RID:
-                            formatted_parts.append(part_upper)
-                        else:
-                            # Определяем регистр для части
-                            part_lower = part.lower()
-                            if part_lower in self.LOWERCASE_WORDS:
-                                formatted_parts.append(part_lower)
-                            else:
-                                # Первая буква заглавная, остальные строчные
-                                formatted_parts.append(part[0].upper() + part[1:].lower())
-                    
-                    # Восстанавливаем дефис и добавляем знаки препинания
-                    formatted_word = '-'.join(formatted_parts)
-                    
-                    # Добавляем обратно знаки препинания
-                    if word.endswith(('.', ',', ';', ':', '!', '?')):
-                        formatted_word += word[-1]
-                    
-                    formatted_words.append(formatted_word)
-                    i += 1
-                    continue
-                
-                # Проверяем, является ли слово аббревиатурой
-                word_upper = word_clean.upper()
-                if word_upper in self.KEEP_UPPER_RID:
-                    # Аббревиатура - оставляем как есть
-                    formatted_words.append(word)
-                    i += 1
-                    continue
-                
-                # Определяем регистр для обычного слова
-                word_lower = word_clean.lower()
-                
-                # Проверяем, является ли слово служебным (предлог, союз)
-                if word_lower in self.LOWERCASE_WORDS:
-                    # Служебные слова всегда с маленькой буквы
-                    formatted_word = word_lower
-                else:
-                    # Обычное слово - первая буква заглавная, остальные строчные
-                    # Но только если это не продолжение аббревиатуры
-                    formatted_word = word_clean[0].upper() + word_clean[1:].lower()
-                
-                # Добавляем обратно знаки препинания
-                if word != word_clean:
-                    punctuation = word[len(word_clean):]
-                    formatted_word += punctuation
-                
-                formatted_words.append(formatted_word)
-                i += 1
-            
-            # Собираем предложение
-            formatted_sentence = ''.join(formatted_words)
-            
-            # Убеждаемся, что первое слово предложения с большой буквы
-            if formatted_sentence and len(formatted_sentence) > 0:
-                # Ищем первую букву
-                first_letter_match = re.search(r'[а-яёa-z]', formatted_sentence, re.IGNORECASE)
-                if first_letter_match:
-                    pos = first_letter_match.start()
-                    formatted_sentence = (
-                        formatted_sentence[:pos] + 
-                        formatted_sentence[pos].upper() + 
-                        formatted_sentence[pos+1:]
-                    )
-            
-            formatted_sentences.append(formatted_sentence)
-        
-        # Собираем весь текст
-        result = ' '.join(formatted_sentences)
-        
-        # Исправляем пробелы перед знаками препинания
-        result = re.sub(r'\s+([,;:.])', r'\1', result)
-        
-        # Убираем лишние пробелы
-        result = ' '.join(result.split())
-        
-        return result
     
     def get_ip_type(self):
         """Должен быть переопределен в дочерних классах"""
@@ -480,95 +588,10 @@ class BaseFIPSParser:
         value = str(value).lower().strip()
         return value in ['1', 'true', 'yes', 'да', 'действует', 't', '1.0', 'активен']
     
-    def format_organization_name(self, name):
-        """
-        Приводит название организации к правильному регистру
-        ООО "РОМАШКА" -> ООО "Ромашка"
-        ФГУП "ВНИИ "ЦЕНТР" -> ФГУП "ВНИИ "Центр"
-        """
-        if not name:
-            return name
-        
-        # Список аббревиатур, которые должны оставаться в верхнем регистре
-        KEEP_UPPER = [
-            'ООО', 'ЗАО', 'ОАО', 'АО', 'ПАО', 'НАО',
-            'ФГУП', 'ФГБУ', 'ФГАОУ', 'ФГАУ', 'ФГКУ',
-            'НИИ', 'КБ', 'ОКБ', 'СКБ', 'ЦКБ', 'ПКБ',
-            'НПО', 'НПП', 'НПФ', 'НПЦ', 'НИЦ',
-            'МУП', 'ГУП', 'ИЧП', 'ТОО', 'АОЗТ', 'АООТ',
-            'РФ', 'РАН', 'СО РАН', 'УрО РАН', 'ДВО РАН',
-            'МГУ', 'СПбГУ', 'МФТИ', 'МИФИ', 'МГТУ', 'МАИ',
-            'ФИАН', 'МИАН', 'ИПМ', 'ИПМех', 'ИППИ',
-            'ЦАГИ', 'ЦИАМ', 'ВИАМ', 'ВИЛС', 'ВИМС'
-        ]
-        
-        # Разбиваем на части по кавычкам
-        parts = re.split(r'(")', name)
-        result = []
-        in_quotes = False
-        
-        for i, part in enumerate(parts):
-            if part == '"':
-                in_quotes = not in_quotes
-                result.append(part)
-            elif in_quotes:
-                # Часть внутри кавычек - форматируем как обычный текст
-                words = part.split()
-                formatted_words = []
-                for word in words:
-                    if word.upper() in KEEP_UPPER:
-                        formatted_words.append(word.upper())
-                    elif word.isupper() and len(word) > 1:
-                        # Предполагаем, что это аббревиатура
-                        formatted_words.append(word.upper())
-                    else:
-                        # Обычное слово с заглавной буквы
-                        formatted_words.append(word[0].upper() + word[1:].lower())
-                result.append(' '.join(formatted_words))
-            else:
-                # Часть вне кавычек - форматируем аббревиатуры
-                words = part.split()
-                formatted_words = []
-                for word in words:
-                    word_clean = word.strip('.,;:()')
-                    if word_clean.upper() in KEEP_UPPER:
-                        formatted_words.append(word_clean.upper())
-                    elif word_clean.isupper() and len(word_clean) > 1:
-                        formatted_words.append(word_clean.upper())
-                    else:
-                        formatted_words.append(word)
-                result.append(' '.join(formatted_words))
-        
-        return ''.join(result)
-    
-    def normalize_name_case(self, name):
-        """
-        Приводит имя человека к правильному регистру:
-        ФОМИН АРТЕМ ВЛАДИМИРОВИЧ -> Фомин Артем Владимирович
-        ИВАНОВ И.И. -> Иванов И.И.
-        """
-        if not name:
-            return name
-        
-        parts = name.split()
-        normalized_parts = []
-        
-        for part in parts:
-            if part and len(part) > 0:
-                part = part.strip('.')
-                
-                if len(part) == 1:
-                    normalized_parts.append(part.upper() + '.')
-                elif '.' in part:
-                    initials = [p for p in part if p.isalpha()]
-                    normalized_parts.append(''.join([i.upper() + '.' for i in initials]))
-                else:
-                    normalized_parts.append(part[0].upper() + part[1:].lower())
-        
-        return ' '.join(normalized_parts)
-    
     def get_or_create_country(self, code):
-        """Получение или создание страны по коду"""
+        """
+        Получение страны по коду из существующей модели Country
+        """
         if not code or pd.isna(code):
             return None
         
@@ -576,34 +599,28 @@ class BaseFIPSParser:
         if len(code) != 2:
             return None
         
+        # Проверяем кэш
         if code in self.country_cache:
             return self.country_cache[code]
         
-        country_names = {
-            'RU': ('Россия', 'Russia'),
-            'US': ('США', 'USA'),
-            'DE': ('Германия', 'Germany'),
-            'FR': ('Франция', 'France'),
-            'GB': ('Великобритания', 'United Kingdom'),
-            'CN': ('Китай', 'China'),
-            'JP': ('Япония', 'Japan'),
-            'KZ': ('Казахстан', 'Kazakhstan'),
-            'BY': ('Беларусь', 'Belarus'),
-            'UA': ('Украина', 'Ukraine'),
-        }
-        
         try:
-            country, created = Country.objects.get_or_create(
-                code=code,
-                defaults={
-                    'name': country_names.get(code, (code, code))[0],
-                    'name_en': country_names.get(code, (code, code))[1],
-                }
-            )
-            self.country_cache[code] = country
-            return country
+            # Ищем страну по двухбуквенному коду
+            country = Country.objects.filter(code=code).first()
+            if country:
+                self.country_cache[code] = country
+                return country
+            
+            # Если не нашли по двухбуквенному, пробуем по трехбуквенному
+            country = Country.objects.filter(code_alpha3=code).first()
+            if country:
+                self.country_cache[code] = country
+                return country
+            
+            self.stdout.write(self.style.WARNING(f"  Страна с кодом {code} не найдена в БД"))
+            return None
+            
         except Exception as e:
-            self.stdout.write(self.style.WARNING(f"  Ошибка создания страны {code}: {e}"))
+            self.stdout.write(self.style.WARNING(f"  Ошибка поиска страны {code}: {e}"))
             return None
     
     def parse_authors(self, authors_str):
@@ -622,7 +639,7 @@ class BaseFIPSParser:
             
             author = author.strip('"')
             author = re.sub(r'\s*\([A-Z]{2}\)', '', author)
-            author = self.normalize_name_case(author)
+            author = self.person_formatter.format(author)
             
             parts = author.split()
             
@@ -700,7 +717,7 @@ class BaseFIPSParser:
                 if person_data['middle_name']:
                     full_name_parts.append(person_data['middle_name'])
                 full_name = ' '.join(full_name_parts)
-                full_name = self.normalize_name_case(full_name)
+                full_name = self.person_formatter.format(full_name)
             
             person = Person.objects.create(
                 ceo_id=new_id,
@@ -721,7 +738,7 @@ class BaseFIPSParser:
             return None
         
         full_name = str(full_name).strip().strip('"')
-        full_name = self.normalize_name_case(full_name)
+        full_name = self.person_formatter.format(full_name)
         
         if full_name in self.person_cache:
             return self.person_cache[full_name]
@@ -827,7 +844,7 @@ class BaseFIPSParser:
             return similar
         
         # Форматируем название перед сохранением
-        formatted_name = self.format_organization_name(org_name)
+        formatted_name = self.org_normalizer.format_organization_name(org_name)
         
         # Нормализуем для генерации slug
         norm_data = self.org_normalizer.normalize(org_name)
@@ -984,7 +1001,7 @@ class InventionParser(BaseFIPSParser):
         
         name = self.clean_string(row.get('invention name'))
         if name:
-            name = self.format_rid_name(name)
+            name = self.rid_formatter.format(name)
         else:
             name = f"Изобретение №{registration_number}"
         
@@ -1159,6 +1176,10 @@ class InventionParser(BaseFIPSParser):
                          f"Пропущено: {stats['skipped']}, Ошибок: {stats['errors']}")
         
         return stats
+
+
+# Остальные парсеры (UtilityModelParser, IndustrialDesignParser и т.д.) 
+# будут аналогичными, просто с другими типами РИД
 
 
 class UtilityModelParser(BaseFIPSParser):
