@@ -186,6 +186,58 @@ class BaseFIPSParser:
     Содержит общие методы для работы с данными.
     """
     
+    # Список терминов, которые должны оставаться в верхнем регистре для названий РИД
+    KEEP_UPPER_RID = [
+        # Химические и научные термины
+        'ДНК', 'РНК', 'ПЦР', 'ИФА', 'ЭДТА', 'АТФ', 'АДФ', 'НАД', 'НАДФ',
+        'ГИСТОН', 'ПРОТЕИН', 'ПЕПТИД', 'ПОЛИМЕР', 'МОНОМЕР',
+        'СПИН', 'ЯМР', 'ЭПР', 'ИК', 'УФ', 'ВУФ', 'ЭМИ', 'КПД',
+        'ТВЕРДОТЕЛЬНЫЙ', 'ПОЛУПРОВОДНИКОВЫЙ', 'НАНОСТРУКТУРА',
+        'ЛАЗЕР', 'МАЗЕР', 'ФЕМТОСЕКУНДНЫЙ', 'ПИКОСЕКУНДНЫЙ',
+        
+        # Единицы измерения
+        '°C', '°F', 'K', 'м', 'см', 'мм', 'км', 'кг', 'г', 'мг', 'мкг',
+        'л', 'мл', 'мкл', 'с', 'мс', 'мкс', 'мин', 'ч', 'сут',
+        'Па', 'кПа', 'МПа', 'ГПа', 'атм', 'бар', 'мм рт. ст.',
+        'А', 'В', 'Вт', 'кВт', 'МВт', 'ГВт', 'Ом', 'Ф', 'Гн', 'Тл',
+        'бит', 'байт', 'Кб', 'Мб', 'Гб', 'Тб', 'Гц', 'кГц', 'МГц', 'ГГц',
+        
+        # Математические обозначения
+        'sin', 'cos', 'tg', 'ctg', 'arcsin', 'arccos', 'arctg', 'arcctg',
+        'lim', 'inf', 'sup', 'max', 'min', 'det', 'ker', 'dim', 'hom',
+        
+        # Химические элементы и соединения
+        'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', 'Mg',
+        'Al', 'Si', 'P', 'S', 'Cl', 'Ar', 'K', 'Ca', 'Sc', 'Ti', 'V',
+        'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn', 'Ga', 'Ge', 'As', 'Se',
+        'Br', 'Kr', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh',
+        'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Te', 'I', 'Xe', 'Cs', 'Ba',
+        'La', 'Ce', 'Pr', 'Nd', 'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho',
+        'Er', 'Tm', 'Yb', 'Lu', 'HCl', 'H2SO4', 'HNO3', 'H3PO4', 'NaOH',
+        'KOH', 'NH3', 'CO2', 'CO', 'NO', 'NO2', 'SO2', 'SO3', 'H2O', 'H2O2',
+        
+        # Аббревиатуры организаций и стандартов
+        'ГОСТ', 'ТУ', 'ОСТ', 'СТП', 'СТО', 'СНиП', 'СП', 'СанПиН',
+        'ISO', 'IEC', 'IEEE', 'ANSI', 'DIN', 'BS', 'JIS', 'GOST', 'EN',
+        
+        # Модели и марки
+        'iPhone', 'iPad', 'MacBook', 'Windows', 'Linux', 'Android', 'iOS',
+        'USB', 'HDMI', 'VGA', 'DVI', 'DisplayPort', 'Thunderbolt',
+        'Bluetooth', 'Wi-Fi', 'WiFi', 'ZigBee', 'LoRa', 'NB-IoT', 'LTE', '5G',
+        'CPU', 'GPU', 'RAM', 'ROM', 'SSD', 'HDD', 'BIOS', 'UEFI', 'PCIe',
+        
+        # Патентные классификации
+        'МПК', 'МКТУ', 'МКПО', 'НИОКР', 'РИД', 'ИС', 'ОИС', 'ФИПС', 'Роспатент',
+        
+        # Медицинские и биологические термины
+        'ВИЧ', 'СПИД', 'COVID-19', 'SARS-CoV-2', 'Эбола', 'Гепатит',
+        'МРТ', 'КТ', 'ПЭТ', 'УЗИ', 'ЭКГ', 'ЭЭГ', 'ЭМГ', 'ЭХО-КГ',
+        
+        # Технические термины
+        'ЧПУ', 'АСУ', 'ТП', 'АСУТП', 'SCADA', 'PLC', 'HMI', 'CNC',
+        'CAD', 'CAM', 'CAE', 'PLM', 'PDM', 'ERP', 'CRM', 'MES',
+    ]
+    
     def __init__(self, command):
         self.command = command
         self.stdout = command.stdout
@@ -204,6 +256,108 @@ class BaseFIPSParser:
         # Детектор типов и нормализатор
         self.type_detector = EntityTypeDetector()
         self.org_normalizer = OrganizationNormalizer()
+    
+    def format_rid_name(self, name):
+        """
+        Приводит наименование РИД к правильному регистру.
+        Используется для изобретений, полезных моделей, промышленных образцов,
+        программ ЭВМ, баз данных и топологий микросхем.
+        """
+        if not name:
+            return name
+        
+        # Разбиваем на предложения (по точкам, но не сокращениям)
+        sentences = re.split(r'(?<=[.!?])\s+(?=[А-ЯЁA-Z])', str(name))
+        formatted_sentences = []
+        
+        for sentence in sentences:
+            # Разбиваем на слова, сохраняя пробелы
+            words = re.split(r'(\s+)', sentence)
+            formatted_words = []
+            
+            i = 0
+            while i < len(words):
+                word = words[i]
+                
+                # Если это пробел, просто добавляем
+                if re.match(r'^\s+$', word):
+                    formatted_words.append(word)
+                    i += 1
+                    continue
+                
+                # Проверяем, является ли слово аббревиатурой из общего списка
+                word_upper = word.upper().strip('.,;:()[]{}')
+                if (word_upper in self.KEEP_UPPER_RID or 
+                    word_upper in getattr(self, 'KEEP_UPPER', [])):
+                    formatted_words.append(word)
+                    i += 1
+                    continue
+                
+                # Проверяем на наличие дефиса
+                if '-' in word:
+                    parts = word.split('-')
+                    formatted_parts = []
+                    for part in parts:
+                        part_upper = part.upper().strip('.,;:()')
+                        if (part_upper in self.KEEP_UPPER_RID or 
+                            part_upper in getattr(self, 'KEEP_UPPER', [])):
+                            formatted_parts.append(part)
+                        else:
+                            formatted_parts.append(part[0].upper() + part[1:].lower())
+                    formatted_words.append('-'.join(formatted_parts))
+                    i += 1
+                    continue
+                
+                # Проверяем, является ли слово числом с единицей измерения
+                unit_match = re.match(r'^(\d+(?:[.,]\d+)?)([а-яёa-z°]+)$', word.lower())
+                if unit_match:
+                    number, unit = unit_match.groups()
+                    unit_upper = unit.upper()
+                    if unit_upper in self.KEEP_UPPER_RID:
+                        formatted_words.append(number + unit.upper())
+                    else:
+                        formatted_words.append(number + unit.lower())
+                    i += 1
+                    continue
+                
+                # Проверяем, является ли слово инициалом
+                if re.match(r'^[А-ЯЁA-Z]\.$', word) or re.match(r'^[А-ЯЁA-Z]\.[А-ЯЁA-Z]\.$', word):
+                    formatted_words.append(word.upper())
+                    i += 1
+                    continue
+                
+                # Обычное слово - первая буква заглавная, остальные строчные
+                if word and len(word) > 0:
+                    clean_word = word.strip('.,;:()[]{}')
+                    if clean_word and len(clean_word) > 0:
+                        if clean_word.isupper() and len(clean_word) > 1:
+                            # Вероятно, аббревиатура не из списка
+                            formatted_words.append(word)
+                        else:
+                            formatted_words.append(word[0].upper() + word[1:].lower())
+                    else:
+                        formatted_words.append(word)
+                else:
+                    formatted_words.append(word)
+                
+                i += 1
+            
+            # Собираем предложение
+            formatted_sentence = ''.join(formatted_words)
+            
+            # Добавляем точку в конце, если её нет и предложение не пустое
+            if formatted_sentence and not formatted_sentence.endswith('.'):
+                formatted_sentence += '.'
+            
+            formatted_sentences.append(formatted_sentence)
+        
+        # Собираем весь текст
+        result = ' '.join(formatted_sentences)
+        
+        # Исправляем пробелы перед знаками препинания
+        result = re.sub(r'\s+([,;:.])', r'\1', result)
+        
+        return result
     
     def get_ip_type(self):
         """Должен быть переопределен в дочерних классах"""
@@ -757,7 +911,9 @@ class InventionParser(BaseFIPSParser):
         self.stdout.write(f"\n  📄 Обработка патента №{registration_number}")
         
         name = self.clean_string(row.get('invention name'))
-        if not name:
+        if name:
+            name = self.format_rid_name(name)
+        else:
             name = f"Изобретение №{registration_number}"
         
         self.stdout.write(f"     Название: {name[:50]}...")
