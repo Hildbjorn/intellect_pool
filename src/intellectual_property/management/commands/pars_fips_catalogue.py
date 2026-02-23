@@ -259,18 +259,24 @@ class BaseFIPSParser:
     
     def format_rid_name(self, name):
         """
-        Приводит наименование РИД к правильному регистру.
-        Используется для изобретений, полезных моделей, промышленных образцов,
-        программ ЭВМ, баз данных и топологий микросхем.
+        Приводит наименование РИД к правильному регистру согласно правилам русского языка.
+        Например: "СПОСОБ ПОЛУЧЕНИЯ ДНК" -> "Способ получения ДНК"
         """
-        if not name:
+        if not name or not isinstance(name, str):
+            return name
+        
+        # Если строка пустая или состоит из одного символа
+        if len(name.strip()) <= 1:
             return name
         
         # Разбиваем на предложения (по точкам, но не сокращениям)
-        sentences = re.split(r'(?<=[.!?])\s+(?=[А-ЯЁA-Z])', str(name))
+        sentences = re.split(r'(?<=[.!?])\s+(?=[А-ЯЁA-Z])', name)
         formatted_sentences = []
         
         for sentence in sentences:
+            if not sentence or len(sentence.strip()) == 0:
+                continue
+                
             # Разбиваем на слова, сохраняя пробелы
             words = re.split(r'(\s+)', sentence)
             formatted_words = []
@@ -285,24 +291,36 @@ class BaseFIPSParser:
                     i += 1
                     continue
                 
-                # Проверяем, является ли слово аббревиатурой из общего списка
-                word_upper = word.upper().strip('.,;:()[]{}')
-                if (word_upper in self.KEEP_UPPER_RID or 
-                    word_upper in getattr(self, 'KEEP_UPPER', [])):
+                # Пропускаем пустые слова
+                if not word or len(word.strip()) == 0:
+                    i += 1
+                    continue
+                
+                word_clean = word.strip('.,;:()[]{}')
+                if not word_clean:
                     formatted_words.append(word)
                     i += 1
                     continue
                 
+                # Проверяем, является ли слово аббревиатурой из списка
+                word_upper = word_clean.upper()
+                if word_upper in self.KEEP_UPPER_RID:
+                    formatted_words.append(word_upper)
+                    i += 1
+                    continue
+                
                 # Проверяем на наличие дефиса
-                if '-' in word:
-                    parts = word.split('-')
+                if '-' in word_clean:
+                    parts = word_clean.split('-')
                     formatted_parts = []
                     for part in parts:
-                        part_upper = part.upper().strip('.,;:()')
-                        if (part_upper in self.KEEP_UPPER_RID or 
-                            part_upper in getattr(self, 'KEEP_UPPER', [])):
-                            formatted_parts.append(part)
+                        if not part:
+                            continue
+                        part_upper = part.upper()
+                        if part_upper in self.KEEP_UPPER_RID:
+                            formatted_parts.append(part_upper)
                         else:
+                            # Для составных слов через дефис каждую часть с большой буквы
                             formatted_parts.append(part[0].upper() + part[1:].lower())
                     formatted_words.append('-'.join(formatted_parts))
                     i += 1
@@ -314,31 +332,34 @@ class BaseFIPSParser:
                     number, unit = unit_match.groups()
                     unit_upper = unit.upper()
                     if unit_upper in self.KEEP_UPPER_RID:
-                        formatted_words.append(number + unit.upper())
+                        formatted_words.append(number + unit_upper)
                     else:
                         formatted_words.append(number + unit.lower())
                     i += 1
                     continue
                 
                 # Проверяем, является ли слово инициалом
-                if re.match(r'^[А-ЯЁA-Z]\.$', word) or re.match(r'^[А-ЯЁA-Z]\.[А-ЯЁA-Z]\.$', word):
-                    formatted_words.append(word.upper())
+                if re.match(r'^[А-ЯЁA-Z]\.$', word_clean) or re.match(r'^[А-ЯЁA-Z]\.[А-ЯЁA-Z]\.$', word_clean):
+                    formatted_words.append(word_clean.upper())
+                    i += 1
+                    continue
+                
+                # Проверяем, состоит ли слово только из цифр
+                if word_clean.isdigit():
+                    formatted_words.append(word_clean)
                     i += 1
                     continue
                 
                 # Обычное слово - первая буква заглавная, остальные строчные
-                if word and len(word) > 0:
-                    clean_word = word.strip('.,;:()[]{}')
-                    if clean_word and len(clean_word) > 0:
-                        if clean_word.isupper() and len(clean_word) > 1:
-                            # Вероятно, аббревиатура не из списка
-                            formatted_words.append(word)
-                        else:
-                            formatted_words.append(word[0].upper() + word[1:].lower())
-                    else:
-                        formatted_words.append(word)
+                # Но только если это не аббревиатура (все заглавные)
+                if word_clean.isupper() and len(word_clean) > 1:
+                    # Проверяем, не является ли это известной аббревиатурой
+                    # Если нет, то преобразуем в обычный текст
+                    formatted_words.append(word_clean[0].upper() + word_clean[1:].lower())
                 else:
-                    formatted_words.append(word)
+                    # Слово уже в смешанном регистре или нижнем - оставляем как есть
+                    # Но первую букву делаем заглавной
+                    formatted_words.append(word_clean[0].upper() + word_clean[1:].lower())
                 
                 i += 1
             
@@ -347,7 +368,10 @@ class BaseFIPSParser:
             
             # Добавляем точку в конце, если её нет и предложение не пустое
             if formatted_sentence and not formatted_sentence.endswith('.'):
-                formatted_sentence += '.'
+                # Проверяем, что последний символ не точка и не другой знак препинания
+                last_char = formatted_sentence[-1]
+                if last_char not in ['.', '!', '?', ',', ';', ':']:
+                    formatted_sentence += '.'
             
             formatted_sentences.append(formatted_sentence)
         
@@ -356,6 +380,9 @@ class BaseFIPSParser:
         
         # Исправляем пробелы перед знаками препинания
         result = re.sub(r'\s+([,;:.])', r'\1', result)
+        
+        # Убираем лишние пробелы
+        result = ' '.join(result.split())
         
         return result
     
@@ -1165,9 +1192,9 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--catalogue-id', type=int, help='ID конкретного каталога для парсинга')
         parser.add_argument('--ip-type', type=str, 
-                          choices=['invention', 'utility-model', 'industrial-design', 
-                                  'integrated-circuit-topology', 'computer-program', 'database'],
-                          help='Тип РИД для парсинга (если не указан, парсятся все)')
+                        choices=['invention', 'utility-model', 'industrial-design', 
+                                'integrated-circuit-topology', 'computer-program', 'database'],
+                        help='Тип РИД для парсинга (если не указан, парсятся все)')
         parser.add_argument('--dry-run', action='store_true', help='Режим проверки без сохранения в БД')
         parser.add_argument('--encoding', type=str, default='utf-8', help='Кодировка CSV файла')
         parser.add_argument('--delimiter', type=str, default=',', help='Разделитель в CSV файле')
@@ -1178,7 +1205,7 @@ class Command(BaseCommand):
         parser.add_argument('--max-rows', type=int, help='Максимальное количество строк для обработки (для тестирования)')
         parser.add_argument('--force', action='store_true', help='Принудительный парсинг даже если каталог уже обработан')
         parser.add_argument('--mark-processed', action='store_true', 
-                          help='Пометить каталог как обработанный (даже если были ошибки)')
+                        help='Пометить каталог как обработанный (даже если были ошибки)')
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1200,12 +1227,17 @@ class Command(BaseCommand):
         self.skip_filters = options['skip_filters']
         self.only_active = options['only_active']
         self.max_rows = options.get('max_rows')
+        self.force = options.get('force', False)
+        self.mark_processed = options.get('mark_processed', False)
         
         if self.dry_run:
             self.stdout.write(self.style.WARNING("\n🔍 РЕЖИМ DRY-RUN: изменения НЕ будут сохранены в БД\n"))
         
         if self.only_active:
             self.stdout.write(self.style.WARNING("📌 Режим: парсинг только активных записей (actual = True)"))
+        
+        if self.force:
+            self.stdout.write(self.style.WARNING("⚠️  Режим: принудительный парсинг (игнорирование даты обработки)"))
         
         catalogues = self.get_catalogues(options.get('catalogue_id'), options.get('ip_type'))
         
