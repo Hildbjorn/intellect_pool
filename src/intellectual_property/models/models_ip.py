@@ -222,12 +222,6 @@ class IPObject(models.Model):
         blank=True
     )
     
-    owner_foivs = models.ManyToManyField(
-        RFRepresentative,
-        related_name='owned_ip_objects_foiv',
-        verbose_name='Правообладатели от РФ (ФОИВ)',
-        blank=True
-    )
     owner_organizations = models.ManyToManyField(
         Organization,
         related_name='owned_ip_objects_organization',

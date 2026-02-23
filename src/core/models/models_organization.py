@@ -6,6 +6,62 @@ from core.models.models_person import Person
 from common.utils import TextUtils
 
 
+# core/models/models_organization_normalization.py
+from django.db import models
+
+class OrganizationNormalizationRule(models.Model):
+    """
+    Правила нормализации названий организаций
+    """
+    original_text = models.CharField(
+        max_length=255,
+        unique=True,
+        verbose_name='Исходный текст',
+        db_index=True,
+        help_text='Текст, который нужно заменить (например, "федеральное государственное унитарное предприятие")'
+    )
+    
+    replacement_text = models.CharField(
+        max_length=100,
+        verbose_name='Текст для замены',
+        help_text='На что заменить (например, "фгуп")'
+    )
+    
+    RULE_TYPES = [
+        ('full', 'Полная форма → аббревиатура'),
+        ('abbr', 'Аббревиатура → аббревиатура'),
+        ('variant', 'Вариант написания → норматив'),
+        ('suffix', 'Суффикс/окончание'),
+        ('prefix', 'Префикс'),
+        ('ignore', 'Игнорировать при поиске'),
+    ]
+    rule_type = models.CharField(
+        max_length=20,
+        choices=RULE_TYPES,
+        default='full',
+        verbose_name='Тип правила',
+        db_index=True
+    )
+    
+    priority = models.PositiveSmallIntegerField(
+        default=100,
+        verbose_name='Приоритет (меньше = раньше)',
+        help_text='Правила с меньшим приоритетом применяются раньше'
+    )
+    
+    class Meta:
+        verbose_name = 'Правило нормализации'
+        verbose_name_plural = 'Правила нормализации'
+        ordering = ['priority', 'original_text']
+        indexes = [
+            models.Index(fields=['original_text']),
+            models.Index(fields=['rule_type']),
+        ]
+    
+    def __str__(self):
+        return f"{self.original_text} → {self.replacement_text}"
+
+
 class ActivityType(models.Model):
     """
     Тип деятельности предприятия (Промышленное, Научное, Прочее)
