@@ -1155,606 +1155,6 @@ for module in admin_files:
 
 -----
 
-# Файл: fixtures\foiv_data.json
-
-```
-[
-  {
-    "model": "core.FOIVType",
-    "pk": 1,
-    "fields": {
-      "foiv_type": "Министерство",
-      "foiv_type_short": "Министерство",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIVType",
-    "pk": 2,
-    "fields": {
-      "foiv_type": "Федеральная служба",
-      "foiv_type_short": "Служба",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIVType",
-    "pk": 3,
-    "fields": {
-      "foiv_type": "Федеральное агентство",
-      "foiv_type_short": "Агентство",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 1,
-    "fields": {
-      "sequence_number": 1,
-      "short_name": "Минпромторг России",
-      "full_name": "Министерство промышленности и торговли Российской Федерации",
-      "okogu_code": "1323500",
-      "slug": "minpromtorg",
-      "foiv_type": 1,
-      "parent_foiv": null,
-      "website": "https://minpromtorg.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 2,
-    "fields": {
-      "sequence_number": 2,
-      "short_name": "Росстандарт",
-      "full_name": "Федеральное агентство по техническому регулированию и метрологии",
-      "okogu_code": "1323565",
-      "slug": "rostekhregulirovanie",
-      "foiv_type": 3,
-      "parent_foiv": 1,
-      "website": "https://www.rst.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 3,
-    "fields": {
-      "sequence_number": 3,
-      "short_name": "Минпросвещения России",
-      "full_name": "Министерство просвещения Российской Федерации",
-      "okogu_code": "1323600",
-      "slug": "minprosvet",
-      "foiv_type": 1,
-      "parent_foiv": null,
-      "website": "https://edu.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 4,
-    "fields": {
-      "sequence_number": 4,
-      "short_name": "Минвостокразвития России",
-      "full_name": "Министерство Российской Федерации по развитию Дальнего Востока и Арктики",
-      "okogu_code": "1323700",
-      "slug": "minvostokrazvitiya",
-      "foiv_type": 1,
-      "parent_foiv": null,
-      "website": "https://minvr.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 5,
-    "fields": {
-      "sequence_number": 5,
-      "short_name": "Минсельхоз России",
-      "full_name": "Министерство сельского хозяйства Российской Федерации",
-      "okogu_code": "1325000",
-      "slug": "mcx",
-      "foiv_type": 1,
-      "parent_foiv": null,
-      "website": "https://mcx.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 6,
-    "fields": {
-      "sequence_number": 6,
-      "short_name": "Россельхознадзор",
-      "full_name": "Федеральная служба по ветеринарному и фитосанитарному надзору",
-      "okogu_code": "1325005",
-      "slug": "fsvps",
-      "foiv_type": 2,
-      "parent_foiv": 5,
-      "website": "https://fsvps.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 7,
-    "fields": {
-      "sequence_number": 7,
-      "short_name": "Росрыболовство",
-      "full_name": "Федеральное агентство по рыболовству",
-      "okogu_code": "1325060",
-      "slug": "fish.gov",
-      "foiv_type": 3,
-      "parent_foiv": 5,
-      "website": "http://fish.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 8,
-    "fields": {
-      "sequence_number": 8,
-      "short_name": "Минспорт России",
-      "full_name": "Министерство спорта Российской Федерации",
-      "okogu_code": "1325500",
-      "slug": "minsport",
-      "foiv_type": 1,
-      "parent_foiv": null,
-      "website": "https://minsport.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 9,
-    "fields": {
-      "sequence_number": 9,
-      "short_name": "Минстрой России",
-      "full_name": "Министерство строительства и жилищно-коммунального хозяйства Российской Федерации",
-      "okogu_code": "1325800",
-      "slug": "minstroyrf",
-      "foiv_type": 1,
-      "parent_foiv": null,
-      "website": "https://minstroyrf.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 10,
-    "fields": {
-      "sequence_number": 10,
-      "short_name": "Минтранс России",
-      "full_name": "Министерство транспорта Российской Федерации",
-      "okogu_code": "1326000",
-      "slug": "mintrans",
-      "foiv_type": 1,
-      "parent_foiv": null,
-      "website": "https://mintrans.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 11,
-    "fields": {
-      "sequence_number": 11,
-      "short_name": "Ространснадзор",
-      "full_name": "Федеральная служба по надзору в сфере транспорта",
-      "okogu_code": "1326030",
-      "slug": "rostransnadzor",
-      "foiv_type": 2,
-      "parent_foiv": 10,
-      "website": "https://rostransnadzor.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 12,
-    "fields": {
-      "sequence_number": 12,
-      "short_name": "Росавиация",
-      "full_name": "Федеральное агентство воздушного транспорта",
-      "okogu_code": "1326055",
-      "slug": "favt",
-      "foiv_type": 3,
-      "parent_foiv": 10,
-      "website": "https://favt.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 13,
-    "fields": {
-      "sequence_number": 13,
-      "short_name": "Росавтодор",
-      "full_name": "Федеральное дорожное агентство",
-      "okogu_code": "1326060",
-      "slug": "rosavtodor",
-      "foiv_type": 3,
-      "parent_foiv": 10,
-      "website": "https://rosavtodor.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 14,
-    "fields": {
-      "sequence_number": 14,
-      "short_name": "Росжелдор",
-      "full_name": "Федеральное агентство железнодорожного транспорта",
-      "okogu_code": "1326065",
-      "slug": "roszeldor",
-      "foiv_type": 3,
-      "parent_foiv": 10,
-      "website": "https://roszeldor.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 15,
-    "fields": {
-      "sequence_number": 15,
-      "short_name": "Росморречфлот",
-      "full_name": "Федеральное агентство морского и речного транспорта",
-      "okogu_code": "1326080",
-      "slug": "morflot",
-      "foiv_type": 3,
-      "parent_foiv": 10,
-      "website": "https://morflot.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 16,
-    "fields": {
-      "sequence_number": 16,
-      "short_name": "Минтруд России",
-      "full_name": "Министерство труда и социальной защиты Российской Федерации",
-      "okogu_code": "1326500",
-      "slug": "mintrud",
-      "foiv_type": 1,
-      "parent_foiv": null,
-      "website": "https://mintrud.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 17,
-    "fields": {
-      "sequence_number": 17,
-      "short_name": "Роструд",
-      "full_name": "Федеральная служба по труду и занятости",
-      "okogu_code": "1326510",
-      "slug": "rostrud",
-      "foiv_type": 2,
-      "parent_foiv": 16,
-      "website": "https://rostrud.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 18,
-    "fields": {
-      "sequence_number": 18,
-      "short_name": "Минфин России",
-      "full_name": "Министерство финансов Российской Федерации",
-      "okogu_code": "1327000",
-      "slug": "minfin",
-      "foiv_type": 1,
-      "parent_foiv": null,
-      "website": "https://minfin.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 19,
-    "fields": {
-      "sequence_number": 19,
-      "short_name": "ФНС России",
-      "full_name": "Федеральная налоговая служба",
-      "okogu_code": "1327010",
-      "slug": "nalog",
-      "foiv_type": 2,
-      "parent_foiv": 18,
-      "website": "https://nalog.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 20,
-    "fields": {
-      "sequence_number": 20,
-      "short_name": "Федеральная пробирная палата",
-      "full_name": "Федеральная пробирная палата (федеральная служба)",
-      "okogu_code": "1327013",
-      "slug": "assay.gov",
-      "foiv_type": 2,
-      "parent_foiv": 18,
-      "website": "https://probpalata.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 21,
-    "fields": {
-      "sequence_number": 21,
-      "short_name": "Росалкогольтабакконтроль",
-      "full_name": "Федеральная служба по контролю за алкогольным и табачным рынками",
-      "okogu_code": "1327015",
-      "slug": "fsar",
-      "foiv_type": 2,
-      "parent_foiv": 18,
-      "website": "https://fsrar.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 22,
-    "fields": {
-      "sequence_number": 22,
-      "short_name": "ФТС России",
-      "full_name": "Федеральная таможенная служба",
-      "okogu_code": "1327020",
-      "slug": "customs",
-      "foiv_type": 2,
-      "parent_foiv": 18,
-      "website": "https://customs.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 23,
-    "fields": {
-      "sequence_number": 23,
-      "short_name": "Казначейство России",
-      "full_name": "Федеральное казначейство (федеральная служба)",
-      "okogu_code": "1327035",
-      "slug": "roskazna",
-      "foiv_type": 2,
-      "parent_foiv": 18,
-      "website": "https://roskazna.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 24,
-    "fields": {
-      "sequence_number": 24,
-      "short_name": "Росимущество",
-      "full_name": "Федеральное агентство по управлению государственным имуществом",
-      "okogu_code": "1327080",
-      "slug": "rosim",
-      "foiv_type": 3,
-      "parent_foiv": 18,
-      "website": "https://rosim.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 25,
-    "fields": {
-      "sequence_number": 25,
-      "short_name": "Минцифры России",
-      "full_name": "Министерство цифрового развития, связи и массовых коммуникаций Российской Федерации",
-      "okogu_code": "1327500",
-      "slug": "digital",
-      "foiv_type": 1,
-      "parent_foiv": null,
-      "website": "https://digital.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 26,
-    "fields": {
-      "sequence_number": 26,
-      "short_name": "Роскомнадзор",
-      "full_name": "Федеральная служба по надзору в сфере связи, информационных технологий и массовых коммуникаций",
-      "okogu_code": "1327525",
-      "slug": "rkn",
-      "foiv_type": 2,
-      "parent_foiv": 25,
-      "website": "https://rkn.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 27,
-    "fields": {
-      "sequence_number": 27,
-      "short_name": "Минэкономразвития России",
-      "full_name": "Министерство экономического развития Российской Федерации",
-      "okogu_code": "1328000",
-      "slug": "economy",
-      "foiv_type": 1,
-      "parent_foiv": null,
-      "website": "https://economy.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 28,
-    "fields": {
-      "sequence_number": 28,
-      "short_name": "Росаккредитация",
-      "full_name": "Федеральная служба по аккредитации",
-      "okogu_code": "1328005",
-      "slug": "fsa",
-      "foiv_type": 2,
-      "parent_foiv": 27,
-      "website": "https://fsa.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 29,
-    "fields": {
-      "sequence_number": 29,
-      "short_name": "Росстат",
-      "full_name": "Федеральная служба государственной статистики",
-      "okogu_code": "1328035",
-      "slug": "rosstat",
-      "foiv_type": 2,
-      "parent_foiv": 27,
-      "website": "https://rosstat.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 30,
-    "fields": {
-      "sequence_number": 30,
-      "short_name": "Роспатент",
-      "full_name": "Федеральная служба по интеллектуальной собственности",
-      "okogu_code": "1328040",
-      "slug": "rupt",
-      "foiv_type": 2,
-      "parent_foiv": 27,
-      "website": "https://rupto.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 31,
-    "fields": {
-      "sequence_number": 31,
-      "short_name": "Минэнерго России",
-      "full_name": "Министерство энергетики Российской Федерации",
-      "okogu_code": "1328500",
-      "slug": "minenergo",
-      "foiv_type": 1,
-      "parent_foiv": null,
-      "website": "https://minenergo.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 32,
-    "fields": {
-      "sequence_number": 32,
-      "short_name": "ФАС России",
-      "full_name": "Федеральная антимонопольная служба",
-      "okogu_code": "1330405",
-      "slug": "fas",
-      "foiv_type": 2,
-      "parent_foiv": null,
-      "website": "https://fas.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 33,
-    "fields": {
-      "sequence_number": 33,
-      "short_name": "Росреестр",
-      "full_name": "Федеральная служба государственной регистрации, кадастра и картографии",
-      "okogu_code": "1330411",
-      "slug": "rosreestr",
-      "foiv_type": 2,
-      "parent_foiv": null,
-      "website": "https://rosreestr.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 34,
-    "fields": {
-      "sequence_number": 34,
-      "short_name": "Роспотребнадзор",
-      "full_name": "Федеральная служба по надзору в сфере защиты прав потребителей и благополучия человека",
-      "okogu_code": "1330415",
-      "slug": "rospotrebnadzor",
-      "foiv_type": 2,
-      "parent_foiv": null,
-      "website": "https://rospotrebnadzor.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  },
-  {
-    "model": "core.FOIV",
-    "pk": 35,
-    "fields": {
-      "sequence_number": 35,
-      "short_name": "Рособрнадзор",
-      "full_name": "Федеральная служба по надзору в сфере образования и науки",
-      "okogu_code": "1330429",
-      "slug": "obrnadzor",
-      "foiv_type": 2,
-      "parent_foiv": null,
-      "website": "https://obrnadzor.gov.ru/",
-      "created_at": "2026-02-22T12:00:00Z",
-      "updated_at": "2026-02-22T12:00:00Z"
-    }
-  }
-]
-```
-
-
------
-
 # Файл: forms\__init__.py
 
 ```
@@ -1775,6 +1175,8 @@ for module in model_files:
 # Файл: models\models_foiv.py
 
 ```
+import re
+
 from django.db import models
 from django.utils.text import slugify
 from core.models.models_geo import City
@@ -2016,6 +1418,87 @@ class FOIV(models.Model):
             hierarchy.append(str(current))
             current = current.parent_foiv
         return " → ".join(reversed(hierarchy))
+    
+
+class RFRepresentative(models.Model):
+    """
+    Представительство Российской Федерации в лице ФОИВ
+    Например: "Российская Федерация, от имени которой выступает Министерство промышленности и торговли Российской Федерации"
+    """
+    rf_representative_id = models.PositiveIntegerField(
+        primary_key=True,
+        verbose_name='ID представительства'
+    )
+    
+    foiv = models.ForeignKey(
+        FOIV,
+        on_delete=models.CASCADE,
+        related_name='rf_representatives',
+        verbose_name='ФОИВ',
+        db_index=True
+    )
+    
+    # Полная строка как в исходных данных
+    full_text = models.TextField(
+        unique=True,
+        verbose_name='Полный текст',
+        help_text='Полная строка из каталога (например: "Российская Федерация, от имени которой выступает Минпромторг России")',
+        db_index=True
+    )
+    
+    # Варианты написания для поиска
+    search_text = models.TextField(
+        verbose_name='Текст для поиска',
+        help_text='Нормализованный текст для поиска (без кавычек, лишних пробелов)',
+        db_index=True
+    )
+    
+    # Сокращенный вариант для отображения
+    display_name = models.CharField(
+        max_length=500,
+        verbose_name='Отображаемое название',
+        help_text='Краткое название для отображения'
+    )
+    
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Дата создания'
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name='Дата обновления'
+    )
+    
+    class Meta:
+        verbose_name = 'Представительство РФ'
+        verbose_name_plural = 'Представительства РФ'
+        ordering = ['foiv__short_name']
+        indexes = [
+            models.Index(fields=['search_text']),
+            models.Index(fields=['full_text']),
+        ]
+    
+    def __str__(self):
+        return self.display_name or f"РФ в лице {self.foiv.short_name}"
+    
+    def save(self, *args, **kwargs):
+        if not self.search_text and self.full_text:
+            # Нормализуем текст для поиска
+            self.search_text = self.normalize_text(self.full_text)
+        if not self.display_name and self.foiv:
+            self.display_name = f"РФ в лице {self.foiv.short_name}"
+        super().save(*args, **kwargs)
+    
+    @staticmethod
+    def normalize_text(text):
+        """Нормализация текста для поиска"""
+        if not text:
+            return text
+        # Приводим к нижнему регистру, убираем лишние пробелы
+        text = ' '.join(text.lower().split())
+        # Убираем кавычки и скобки
+        text = re.sub(r'["\'\(\)]', '', text)
+        return text
 ```
 
 
@@ -2346,6 +1829,62 @@ from core.models.models_person import Person
 from common.utils import TextUtils
 
 
+# core/models/models_organization_normalization.py
+from django.db import models
+
+class OrganizationNormalizationRule(models.Model):
+    """
+    Правила нормализации названий организаций
+    """
+    original_text = models.CharField(
+        max_length=255,
+        unique=True,
+        verbose_name='Исходный текст',
+        db_index=True,
+        help_text='Текст, который нужно заменить (например, "федеральное государственное унитарное предприятие")'
+    )
+    
+    replacement_text = models.CharField(
+        max_length=100,
+        verbose_name='Текст для замены',
+        help_text='На что заменить (например, "фгуп")'
+    )
+    
+    RULE_TYPES = [
+        ('full', 'Полная форма → аббревиатура'),
+        ('abbr', 'Аббревиатура → аббревиатура'),
+        ('variant', 'Вариант написания → норматив'),
+        ('suffix', 'Суффикс/окончание'),
+        ('prefix', 'Префикс'),
+        ('ignore', 'Игнорировать при поиске'),
+    ]
+    rule_type = models.CharField(
+        max_length=20,
+        choices=RULE_TYPES,
+        default='full',
+        verbose_name='Тип правила',
+        db_index=True
+    )
+    
+    priority = models.PositiveSmallIntegerField(
+        default=100,
+        verbose_name='Приоритет (меньше = раньше)',
+        help_text='Правила с меньшим приоритетом применяются раньше'
+    )
+    
+    class Meta:
+        verbose_name = 'Правило нормализации'
+        verbose_name_plural = 'Правила нормализации'
+        ordering = ['priority', 'original_text']
+        indexes = [
+            models.Index(fields=['original_text']),
+            models.Index(fields=['rule_type']),
+        ]
+    
+    def __str__(self):
+        return f"{self.original_text} → {self.replacement_text}"
+
+
 class ActivityType(models.Model):
     """
     Тип деятельности предприятия (Промышленное, Научное, Прочее)
@@ -2657,9 +2196,7 @@ class Organization(models.Model):
 
     def get_strategic_status_display(self):
         """Возвращает статус стратегического предприятия"""
-        if self.strategic_1009:
-            return "Стратегическое (1009-р)"
-        elif self.strategic:
+        if self.strategic:
             return "Стратегическое"
         return "Не стратегическое"
 ```
