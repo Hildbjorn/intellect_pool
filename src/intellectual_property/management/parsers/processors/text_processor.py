@@ -1,5 +1,6 @@
 """
 Процессор для русских текстов с использованием natasha
+Оптимизированная версия с кэшированием и контролем памяти
 """
 
 from natasha import (
@@ -50,21 +51,46 @@ class RussianTextProcessor:
         self.ner_tagger = NewsNERTagger(self.emb)
         self.names_extractor = NamesExtractor(self.morph_vocab)
 
-        # Кэши для производительности
+        # Кэши с ограничением размера
         self.doc_cache = {}
-        self.morph_cache = {}
+        self.person_cache = {}
+        self.max_cache_size = 5000  # Ограничиваем размер кэша документов
+        
+        # Счетчики
+        self.doc_cache_hits = 0
+        self.doc_cache_misses = 0
 
         # Добавляем римские цифры в аббревиатуры
         self.ORG_ABBR.update(self.ROMAN_NUMERALS)
 
-    def get_doc(self, text: str) -> Doc:
+    def get_doc(self, text: str):
         """Получение или создание документа с кэшированием"""
         if not text:
             return None
 
+        # Не кэшируем очень длинные тексты
+        if len(text) > 10000:
+            return self._create_doc(text)
+
+        # Проверяем кэш
         if text in self.doc_cache:
+            self.doc_cache_hits += 1
             return self.doc_cache[text]
 
+        self.doc_cache_misses += 1
+        doc = self._create_doc(text)
+
+        # Управление размером кэша
+        if len(self.doc_cache) >= self.max_cache_size:
+            # Удаляем 20% самых старых записей
+            items = list(self.doc_cache.items())
+            self.doc_cache = dict(items[-int(self.max_cache_size * 0.8):])
+
+        self.doc_cache[text] = doc
+        return doc
+
+    def _create_doc(self, text: str):
+        """Создание документа"""
         doc = Doc(text)
         doc.segment(self.segmenter)
         doc.tag_morph(self.morph_tagger)
@@ -78,7 +104,6 @@ class RussianTextProcessor:
         for span in doc.spans:
             span.normalize(self.morph_vocab)
 
-        self.doc_cache[text] = doc
         return doc
 
     def is_roman_numeral(self, text: str) -> bool:
@@ -100,8 +125,13 @@ class RussianTextProcessor:
         if not text or len(text) < 6:
             return False
 
+        # Проверяем кэш
+        if text in self.person_cache:
+            return self.person_cache[text]
+
         # Если есть явные признаки организации
         if any(ind in text for ind in self.ORG_ABBR if len(ind) > 2):
+            self.person_cache[text] = False
             return False
 
         org_indicators = ['Общество', 'Компания', 'Корпорация', 'Завод',
@@ -109,6 +139,7 @@ class RussianTextProcessor:
                          'Фирма', 'Центр']
 
         if any(ind.lower() in text.lower() for ind in org_indicators):
+            self.person_cache[text] = False
             return False
 
         # Проверка через NER
@@ -116,6 +147,7 @@ class RussianTextProcessor:
         if doc and doc.spans:
             for span in doc.spans:
                 if span.type == 'PER':
+                    self.person_cache[text] = True
                     return True
 
         # Паттерны ФИО
@@ -126,8 +158,11 @@ class RussianTextProcessor:
                 clean = word.rstrip('.,')
                 if clean and clean[0].isupper() and len(clean) > 1:
                     name_like += 1
-            return name_like >= len(words) - 1
+            result = name_like >= len(words) - 1
+            self.person_cache[text] = result
+            return result
 
+        self.person_cache[text] = False
         return False
 
     def extract_person_parts(self, text: str) -> dict:
@@ -189,3 +224,21 @@ class RussianTextProcessor:
             return parts['full']
 
         return name
+
+    def clear_cache(self):
+        """Очистка кэшей для освобождения памяти"""
+        self.doc_cache.clear()
+        self.person_cache.clear()
+        self.doc_cache_hits = 0
+        self.doc_cache_misses = 0
+
+    def get_cache_stats(self):
+        """Статистика кэша"""
+        total = self.doc_cache_hits + self.doc_cache_misses
+        return {
+            'doc_cache_size': len(self.doc_cache),
+            'person_cache_size': len(self.person_cache),
+            'doc_cache_hits': self.doc_cache_hits,
+            'doc_cache_misses': self.doc_cache_misses,
+            'hit_ratio': self.doc_cache_hits / total if total > 0 else 0
+        }
