@@ -481,7 +481,7 @@ class UtilityModelParser(BaseFIPSParser):
         """
         Пакетное создание людей из DataFrame с индикацией прогресса
         Всегда возвращает словарь (даже пустой)
-        Исправлена проблема с дублированием ceo_id при повторных запусках
+        Исправлена проблема с дублированием slug
         """
         person_map = {}
         
@@ -542,7 +542,7 @@ class UtilityModelParser(BaseFIPSParser):
                     ) & (models.Q(middle_name='') | models.Q(middle_name__isnull=True))
             
             for person in Person.objects.filter(name_conditions).only(
-                'ceo_id', 'last_name', 'first_name', 'middle_name', 'ceo'
+                'ceo_id', 'last_name', 'first_name', 'middle_name', 'ceo', 'slug'
             ):
                 for name, (last, first, middle) in batch_name_to_parts.items():
                     if (person.last_name == last and 
@@ -567,16 +567,17 @@ class UtilityModelParser(BaseFIPSParser):
         if new_names:
             self.stdout.write(f"      Подготовка данных для создания...")
             
-            # ПОЛУЧАЕМ АКТУАЛЬНЫЙ MAX_ID ПРЯМО СЕЙЧАС
+            # Получаем актуальный max_id
             max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
             next_id = max_id + 1
             self.stdout.write(f"         Начальный ID: {next_id}")
             
-            # Получаем существующие slugs
-            existing_slugs = set(Person.objects.values_list('slug', flat=True)[:100000])
+            # Получаем ВСЕ существующие slugs для проверки уникальности
+            existing_slugs = set(Person.objects.values_list('slug', flat=True))
+            self.stdout.write(f"         Существующих slug-ов в БД: {len(existing_slugs)}")
             
             people_to_create = []
-            created_count = 0
+            slug_counter = {}  # Счетчик для каждого базового slug-а
             
             for idx, name in enumerate(new_names):
                 if pd.isna(name) or not name:
@@ -590,20 +591,29 @@ class UtilityModelParser(BaseFIPSParser):
                     first_name = parts[1]
                     middle_name = parts[2] if len(parts) > 2 else ''
                     
+                    # Формируем базовый slug
                     name_parts_list = [last_name, first_name]
                     if middle_name:
                         name_parts_list.append(middle_name)
                     
-                    base_slug = slugify(' '.join(name_parts_list)) or 'person'
+                    base_slug = slugify(' '.join(name_parts_list))
+                    if not base_slug:
+                        base_slug = 'person'
+                    
+                    # Генерируем уникальный slug
                     unique_slug = base_slug
                     counter = 1
+                    
+                    # Проверяем, не использовался ли такой slug раньше
                     while unique_slug in existing_slugs:
                         unique_slug = f"{base_slug}-{counter}"
                         counter += 1
+                    
+                    # Добавляем в множество существующих, чтобы следующие итерации учитывали
                     existing_slugs.add(unique_slug)
                     
                     person = Person(
-                        ceo_id=next_id + idx,  # Используем последовательные ID
+                        ceo_id=next_id + idx,
                         ceo=name,
                         last_name=last_name,
                         first_name=first_name,
@@ -616,19 +626,20 @@ class UtilityModelParser(BaseFIPSParser):
                 self.stdout.write(f"      Создание людей пачками по 500...")
                 
                 BATCH_SIZE = 500
+                created_count = 0
                 
                 # Разбиваем на пачки и создаем
                 for i in range(0, len(people_to_create), BATCH_SIZE):
                     batch = people_to_create[i:i+BATCH_SIZE]
                     
-                    # ПРОВЕРЯЕМ, НЕТ ЛИ УЖЕ ТАКИХ ЛЮДЕЙ (на всякий случай)
-                    batch_names = [p.ceo for p in batch]
-                    existing_in_batch = Person.objects.filter(ceo__in=batch_names).values_list('ceo', flat=True)
+                    # Проверяем дубликаты в этой пачке по slug
+                    batch_slugs = [p.slug for p in batch]
+                    existing_in_batch = Person.objects.filter(slug__in=batch_slugs).values_list('slug', flat=True)
                     
                     if existing_in_batch:
-                        self.stdout.write(self.style.WARNING(f"         Найдены дубликаты в пачке: {list(existing_in_batch)}"))
+                        self.stdout.write(self.style.WARNING(f"         Найдены дубликаты slug-ов в пачке: {list(existing_in_batch)}"))
                         # Фильтруем batch, убирая существующих
-                        batch = [p for p in batch if p.ceo not in existing_in_batch]
+                        batch = [p for p in batch if p.slug not in existing_in_batch]
                     
                     if not batch:
                         continue
@@ -643,11 +654,11 @@ class UtilityModelParser(BaseFIPSParser):
                         for person in batch:
                             try:
                                 # Проверяем еще раз перед созданием
-                                if not Person.objects.filter(ceo=person.ceo).exists():
+                                if not Person.objects.filter(slug=person.slug).exists():
                                     person.save()
                                     created_count += 1
                                 else:
-                                    self.stdout.write(self.style.WARNING(f"            Пропущен (уже существует): {person.ceo}"))
+                                    self.stdout.write(self.style.WARNING(f"            Пропущен (slug уже существует): {person.slug}"))
                             except Exception as e2:
                                 self.stdout.write(self.style.WARNING(f"            Не удалось создать {person.ceo}: {e2}"))
                     

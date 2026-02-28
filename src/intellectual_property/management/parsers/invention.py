@@ -476,6 +476,7 @@ class InventionParser(BaseFIPSParser):
         """
         Пакетное создание людей из DataFrame с индикацией прогресса
         Всегда возвращает словарь (даже пустой)
+        Исправлена проблема с дублированием slug
         """
         person_map = {}
         
@@ -493,9 +494,14 @@ class InventionParser(BaseFIPSParser):
         self.stdout.write(f"      Поиск существующих людей в БД...")
         
         name_to_parts = {}
+        valid_names = []
         for name in all_names:
             if pd.isna(name) or not name:
                 continue
+            name = str(name).strip()
+            if not name:
+                continue
+            valid_names.append(name)
             parts = name.split()
             if len(parts) >= 2:
                 last = parts[0]
@@ -531,7 +537,7 @@ class InventionParser(BaseFIPSParser):
                     ) & (models.Q(middle_name='') | models.Q(middle_name__isnull=True))
             
             for person in Person.objects.filter(name_conditions).only(
-                'ceo_id', 'last_name', 'first_name', 'middle_name', 'ceo'
+                'ceo_id', 'last_name', 'first_name', 'middle_name', 'ceo', 'slug'
             ):
                 for name, (last, first, middle) in batch_name_to_parts.items():
                     if (person.last_name == last and 
@@ -547,7 +553,8 @@ class InventionParser(BaseFIPSParser):
         
         self.stdout.write(f"      Найдено существующих: {found_count}")
 
-        new_names = [name for name in all_names if name not in existing_persons]
+        # Определяем новых людей
+        new_names = [name for name in valid_names if name not in existing_persons]
         new_count = len(new_names)
         
         self.stdout.write(f"      Новых людей для создания: {new_count}")
@@ -555,34 +562,53 @@ class InventionParser(BaseFIPSParser):
         if new_names:
             self.stdout.write(f"      Подготовка данных для создания...")
             
+            # Получаем актуальный max_id
             max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
-            existing_slugs = set(Person.objects.values_list('slug', flat=True)[:100000])
+            next_id = max_id + 1
+            self.stdout.write(f"         Начальный ID: {next_id}")
+            
+            # Получаем ВСЕ существующие slugs для проверки уникальности
+            existing_slugs = set(Person.objects.values_list('slug', flat=True))
+            self.stdout.write(f"         Существующих slug-ов в БД: {len(existing_slugs)}")
             
             people_to_create = []
+            slug_counter = {}  # Счетчик для каждого базового slug-а
             
-            for name in new_names:
+            for idx, name in enumerate(new_names):
                 if pd.isna(name) or not name:
                     continue
+                
+                name = str(name).strip()
                 parts = name.split()
+                
                 if len(parts) >= 2:
                     last_name = parts[0]
                     first_name = parts[1]
                     middle_name = parts[2] if len(parts) > 2 else ''
                     
+                    # Формируем базовый slug
                     name_parts_list = [last_name, first_name]
                     if middle_name:
                         name_parts_list.append(middle_name)
                     
-                    base_slug = slugify(' '.join(name_parts_list)) or 'person'
+                    base_slug = slugify(' '.join(name_parts_list))
+                    if not base_slug:
+                        base_slug = 'person'
+                    
+                    # Генерируем уникальный slug
                     unique_slug = base_slug
                     counter = 1
+                    
+                    # Проверяем, не использовался ли такой slug раньше
                     while unique_slug in existing_slugs:
                         unique_slug = f"{base_slug}-{counter}"
                         counter += 1
+                    
+                    # Добавляем в множество существующих, чтобы следующие итерации учитывали
                     existing_slugs.add(unique_slug)
                     
                     person = Person(
-                        ceo_id=max_id + len(people_to_create) + 1,
+                        ceo_id=next_id + idx,
                         ceo=name,
                         last_name=last_name,
                         first_name=first_name,
@@ -594,20 +620,51 @@ class InventionParser(BaseFIPSParser):
             if people_to_create:
                 self.stdout.write(f"      Создание людей пачками по 500...")
                 
-                batch_size = 500
+                BATCH_SIZE = 500
                 created_count = 0
                 
-                for batch in batch_iterator(people_to_create, batch_size):
-                    Person.objects.bulk_create(batch, batch_size=batch_size)
-                    created_count += len(batch)
+                # Разбиваем на пачки и создаем
+                for i in range(0, len(people_to_create), BATCH_SIZE):
+                    batch = people_to_create[i:i+BATCH_SIZE]
                     
-                    if created_count % 5000 == 0 or created_count == new_count:
-                        percent = (created_count / new_count) * 100
+                    # Проверяем дубликаты в этой пачке по slug
+                    batch_slugs = [p.slug for p in batch]
+                    existing_in_batch = Person.objects.filter(slug__in=batch_slugs).values_list('slug', flat=True)
+                    
+                    if existing_in_batch:
+                        self.stdout.write(self.style.WARNING(f"         Найдены дубликаты slug-ов в пачке: {list(existing_in_batch)}"))
+                        # Фильтруем batch, убирая существующих
+                        batch = [p for p in batch if p.slug not in existing_in_batch]
+                    
+                    if not batch:
+                        continue
+                    
+                    try:
+                        # Пробуем создать пачкой
+                        Person.objects.bulk_create(batch, batch_size=BATCH_SIZE, ignore_conflicts=False)
+                        created_count += len(batch)
+                    except Exception as e:
+                        self.stdout.write(self.style.WARNING(f"         Ошибка при создании пачки: {e}"))
+                        # Если пачка не создалась, пробуем по одному
+                        for person in batch:
+                            try:
+                                # Проверяем еще раз перед созданием
+                                if not Person.objects.filter(slug=person.slug).exists():
+                                    person.save()
+                                    created_count += 1
+                                else:
+                                    self.stdout.write(self.style.WARNING(f"            Пропущен (slug уже существует): {person.slug}"))
+                            except Exception as e2:
+                                self.stdout.write(self.style.WARNING(f"            Не удалось создать {person.ceo}: {e2}"))
+                    
+                    if created_count % 5000 == 0 or created_count >= new_count:
+                        percent = (created_count / new_count) * 100 if new_count > 0 else 0
                         self.stdout.write(f"         Создано {created_count}/{new_count} ({percent:.1f}%)")
                 
                 self.stdout.write(f"      Получение созданных людей для маппинга...")
                 
-                created_names = [p.ceo for p in people_to_create]
+                # Получаем созданных людей
+                created_names = [p.ceo for p in people_to_create[:created_count]]
                 for batch in batch_iterator(created_names, 1000):
                     for person in Person.objects.filter(ceo__in=batch):
                         person_map[person.ceo] = person
@@ -641,7 +698,7 @@ class InventionParser(BaseFIPSParser):
         self.stdout.write(f"      Поиск существующих организаций в БД...")
         
         existing_orgs = {}
-        batch_size = 100
+        batch_size = 100 
         
         for i in range(0, len(all_names), batch_size):
             batch_names = all_names[i:i+batch_size]
