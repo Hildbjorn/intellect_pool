@@ -13,12 +13,12 @@
 python manage.py pars_fips_catalogue --only-active --min-year 2020 --ip-type invention --dry-run
 
 # Тест для изобретений
-python manage.py pars_fips_catalogue --only-active --min-year 2020 --ip-type invention --max-rows 10
-python manage.py pars_fips_catalogue --only-active --min-year 2020 --ip-type utility_model --max-rows 10
+python manage.py pars_fips_catalogue --only-active --min-year 2026 --ip-type invention --max-rows 10
+python manage.py pars_fips_catalogue --only-active --min-year 2026 --ip-type utility-model --max-rows 10
 
 # Все изобретения
 python manage.py pars_fips_catalogue --only-active --ip-type invention --force
-python manage.py pars_fips_catalogue --only-active --ip-type utility_model --force
+python manage.py pars_fips_catalogue --only-active --ip-type utility-model --force
 
 ============
     HELP
