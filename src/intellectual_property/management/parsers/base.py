@@ -1,5 +1,6 @@
 """
 Базовый класс для всех парсеров каталогов ФИПС
+Поддерживает параметр year для обработки по годам
 """
 
 import logging
@@ -15,7 +16,6 @@ import pandas as pd
 from intellectual_property.models import IPObject, IPType
 from core.models import Person, Organization, Country
 
-# ИСПРАВЛЕНО: импортируем процессоры из текущего пакета (.processors)
 from .processors import (
     RussianTextProcessor,
     OrganizationNormalizer,
@@ -24,7 +24,6 @@ from .processors import (
     EntityTypeDetector
 )
 
-# ИСПРАВЛЕНО: импортируем утилиты из родительского пакета (..utils)
 from ..utils.progress import batch_iterator
 
 logger = logging.getLogger(__name__)
@@ -63,8 +62,15 @@ class BaseFIPSParser:
         """Возвращает список обязательных колонок"""
         raise NotImplementedError
 
-    def parse_dataframe(self, df, catalogue):
-        """Основной метод парсинга DataFrame"""
+    def parse_dataframe(self, df, catalogue, year=None):
+        """
+        Основной метод парсинга DataFrame
+        
+        Args:
+            df: DataFrame с данными
+            catalogue: объект каталога
+            year: год для текущей обработки (опционально)
+        """
         raise NotImplementedError
 
     def clean_string(self, value):

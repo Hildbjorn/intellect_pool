@@ -1,14 +1,21 @@
 """
 Утилиты для фильтрации DataFrame
+Поддерживают фильтрацию по диапазону лет
 """
 
 from datetime import datetime
 import pandas as pd
 
 
-def filter_by_registration_year(df, min_year, stdout=None):
+def filter_by_registration_year(df, min_year, stdout=None, max_year=None):
     """
-    Фильтрация DataFrame по году регистрации
+    Фильтрация DataFrame по году регистрации с поддержкой диапазона
+    
+    Args:
+        df: DataFrame для фильтрации
+        min_year: минимальный год
+        stdout: поток вывода
+        max_year: максимальный год (опционально)
     """
     def extract_year(date_str):
         try:
@@ -50,10 +57,14 @@ def filter_by_registration_year(df, min_year, stdout=None):
             years_list = list(years_dist.items())
             if len(years_list) > 0:
                 stdout.write(f"     Диапазон годов: {years_list[0][0]:.0f} - {years_list[-1][0]:.0f}")
-                stdout.write(f"     Первые 5: {years_list[:5]}")
-                stdout.write(f"     Последние 5: {years_list[-5:]}")
 
-    filtered_df = df[df['_year'] >= min_year].copy() if '_year' in df.columns else df.copy()
+    # Применяем фильтр по годам
+    condition = df['_year'] >= min_year
+    if max_year:
+        condition &= df['_year'] <= max_year
+    
+    filtered_df = df[condition].copy() if '_year' in df.columns else df.copy()
+    
     if '_year' in filtered_df.columns:
         filtered_df.drop('_year', axis=1, inplace=True)
 
@@ -82,14 +93,21 @@ def filter_by_actual(df, stdout=None):
     return filtered_df
 
 
-def apply_filters(df, min_year, only_active, stdout=None):
+def apply_filters(df, min_year, only_active, stdout=None, max_year=None):
     """
     Применение всех фильтров к DataFrame
+    
+    Args:
+        df: DataFrame для фильтрации
+        min_year: минимальный год
+        only_active: фильтровать только активные
+        stdout: поток вывода
+        max_year: максимальный год (опционально)
     """
     original_count = len(df)
 
     if min_year is not None:
-        df = filter_by_registration_year(df, min_year, stdout)
+        df = filter_by_registration_year(df, min_year, stdout, max_year)
 
     if only_active:
         df = filter_by_actual(df, stdout)

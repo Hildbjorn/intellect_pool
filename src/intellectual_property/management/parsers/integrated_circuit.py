@@ -1,5 +1,6 @@
 """
 Парсер для топологий интегральных микросхем с использованием единого DataFrame для связей
+Поддерживает параметр year для обработки по годам
 """
 
 import logging
@@ -14,7 +15,7 @@ from django.utils.text import slugify
 from tqdm import tqdm
 
 from intellectual_property.models import IPObject, IPType, Person
-from core.models import Organization, Country, RFRepresentative
+from core.models import Organization, Country
 
 from .base import BaseFIPSParser
 from ..utils.progress import batch_iterator
@@ -56,11 +57,17 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
                 return True
         return False
 
-    def parse_dataframe(self, df, catalogue):
+    def parse_dataframe(self, df, catalogue, year=None):
         """
         Основной метод парсинга DataFrame
+        
+        Args:
+            df: DataFrame с данными
+            catalogue: объект каталога
+            year: год для текущей обработки (опционально)
         """
-        self.stdout.write("\n🔹 Начинаем парсинг топологий интегральных микросхем")
+        year_msg = f" для {year} года" if year else ""
+        self.stdout.write(f"\n🔹 Начинаем парсинг топологий интегральных микросхем{year_msg}")
 
         stats = {
             'processed': 0,
@@ -204,7 +211,7 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
                                 'entity_data': author
                             })
 
-                    # Патентообладатели
+                    # Правообладатели
                     holders_str = row.get('right holders')
                     if not pd.isna(holders_str) and holders_str:
                         holders = self._parse_right_holders(holders_str)
@@ -301,7 +308,8 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
 
         stats['processed'] = len(df) - stats['skipped'] - stats['errors']
 
-        self.stdout.write(self.style.SUCCESS("\n✅ Парсинг топологий интегральных микросхем завершен"))
+        year_info = f" для {year} года" if year else ""
+        self.stdout.write(self.style.SUCCESS(f"\n✅ Парсинг топологий интегральных микросхем{year_info} завершен"))
         self.stdout.write(f"   Создано: {stats['created']}, Обновлено: {stats['updated']}, "
                          f"Без изменений: {stats['unchanged']}")
         self.stdout.write(f"   Пропущено: {stats['skipped']} (из них по дате: {stats['skipped_by_date']})")
@@ -317,7 +325,6 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
             return []
         
         holders_str = str(holders_str)
-        # Разделяем по символу новой строки
         holders_list = re.split(r'[\n]\s*', holders_str)
         
         result = []
@@ -325,8 +332,6 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
             holder = holder.strip().strip('"')
             if not holder or holder == 'null' or holder == 'None' or holder.lower() == 'нет':
                 continue
-            
-            # Убираем код страны в скобках (RU) в конце
             holder = re.sub(r'\s*\([A-Z]{2}\)$', '', holder)
             result.append(holder)
         
@@ -335,7 +340,6 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
     def _parse_first_usage_countries(self, countries_str: str) -> List[str]:
         """
         Парсинг строки со странами первого использования
-        Возвращает список кодов стран
         """
         if pd.isna(countries_str) or not countries_str:
             return []
@@ -344,8 +348,6 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
         if countries_str.lower() == 'нет':
             return []
         
-        # Разделяем по запятой или пробелу
-        # В примере: "РФ" - одна страна, но может быть несколько
         countries = re.split(r'[,\s]+', countries_str)
         
         result = []
@@ -362,20 +364,18 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
             if not country:
                 continue
             
-            # Пробуем найти код страны
             if country in country_map:
                 result.append(country_map[country])
             elif len(country) == 2 and country.isupper():
                 result.append(country)
             else:
-                # Возможно, это полное название страны, пробуем найти по имени
                 country_obj = Country.objects.filter(name__icontains=country).first()
                 if country_obj:
                     result.append(country_obj.code)
                 else:
                     self.stdout.write(self.style.WARNING(f"      ⚠️ Не удалось определить код страны: {country}"))
         
-        return list(set(result))  # Убираем дубликаты
+        return list(set(result))
 
     def _process_first_usage_countries(self, countries_data: List[Dict], reg_to_ip: Dict):
         """
@@ -386,7 +386,6 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
         
         self.stdout.write("   Подготовка связей со странами первого использования")
         
-        # Группируем по reg_number
         reg_to_countries = defaultdict(set)
         for item in countries_data:
             ip_id = reg_to_ip.get(item['reg_number'])
@@ -396,7 +395,6 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
         if not reg_to_countries:
             return
         
-        # Получаем маппинг кодов стран в ID
         country_codes = set()
         for countries in reg_to_countries.values():
             country_codes.update(countries)
@@ -407,7 +405,6 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
             if country:
                 country_map[code] = country
         
-        # Подготавливаем связи для удаления и создания
         ip_ids = list(reg_to_countries.keys())
         
         # Удаляем старые связи
@@ -763,6 +760,7 @@ class IntegratedCircuitTopologyParser(BaseFIPSParser):
         
         self.stdout.write(f"      Всего уникальных организаций для обработки: {total_names}")
         
+        # ШАГ 1: Поиск существующих организаций (пачками)
         self.stdout.write(f"      Поиск существующих организаций в БД...")
         
         existing_orgs = {}

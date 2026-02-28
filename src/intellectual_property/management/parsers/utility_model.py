@@ -1,5 +1,6 @@
 """
 Парсер для полезных моделей с использованием единого DataFrame для связей
+Поддерживает параметр year для обработки по годам
 """
 
 import logging
@@ -57,11 +58,17 @@ class UtilityModelParser(BaseFIPSParser):
                 return True
         return False
 
-    def parse_dataframe(self, df, catalogue):
+    def parse_dataframe(self, df, catalogue, year=None):
         """
         Основной метод парсинга DataFrame
+        
+        Args:
+            df: DataFrame с данными
+            catalogue: объект каталога
+            year: год для текущей обработки (опционально)
         """
-        self.stdout.write("\n🔹 Начинаем парсинг полезных моделей")
+        year_msg = f" для {year} года" if year else ""
+        self.stdout.write(f"\n🔹 Начинаем парсинг полезных моделей{year_msg}")
 
         stats = {
             'processed': 0,
@@ -287,7 +294,8 @@ class UtilityModelParser(BaseFIPSParser):
 
         stats['processed'] = len(df) - stats['skipped'] - stats['errors']
 
-        self.stdout.write(self.style.SUCCESS("\n✅ Парсинг полезных моделей завершен"))
+        year_info = f" для {year} года" if year else ""
+        self.stdout.write(self.style.SUCCESS(f"\n✅ Парсинг полезных моделей{year_info} завершен"))
         self.stdout.write(f"   Создано: {stats['created']}, Обновлено: {stats['updated']}, "
                          f"Без изменений: {stats['unchanged']}")
         self.stdout.write(f"   Пропущено: {stats['skipped']} (из них по дате: {stats['skipped_by_date']})")
@@ -470,9 +478,7 @@ class UtilityModelParser(BaseFIPSParser):
         self.stdout.write(self.style.SUCCESS("   ✅ Обработка всех связей завершена"))
 
     def _create_persons_bulk(self, persons_df: pd.DataFrame) -> Dict:
-        """
-        Пакетное создание людей из DataFrame с индикацией прогресса
-        """
+        """Пакетное создание людей из DataFrame с индикацией прогресса"""
         person_map = {}
         all_names = persons_df['entity_name'].tolist()
         total_names = len(all_names)
@@ -604,9 +610,7 @@ class UtilityModelParser(BaseFIPSParser):
         return person_map
 
     def _create_organizations_bulk(self, orgs_df: pd.DataFrame) -> Dict:
-        """
-        Пакетное создание организаций из DataFrame с индикацией прогресса
-        """
+        """Пакетное создание организаций из DataFrame с индикацией прогресса"""
         org_map = {}
         all_names = orgs_df['entity_name'].tolist()
         total_names = len(all_names)

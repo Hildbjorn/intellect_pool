@@ -1,5 +1,6 @@
 """
 Парсер для программ для ЭВМ с использованием единого DataFrame для связей
+Поддерживает параметр year для обработки по годам
 """
 
 import logging
@@ -14,7 +15,7 @@ from django.utils.text import slugify
 from tqdm import tqdm
 
 from intellectual_property.models import IPObject, IPType, Person
-from core.models import Organization, ProgrammingLanguage, OperatingSystem
+from core.models import Organization
 
 from .base import BaseFIPSParser
 from ..utils.progress import batch_iterator
@@ -54,11 +55,17 @@ class ComputerProgramParser(BaseFIPSParser):
                 return True
         return False
 
-    def parse_dataframe(self, df, catalogue):
+    def parse_dataframe(self, df, catalogue, year=None):
         """
         Основной метод парсинга DataFrame
+        
+        Args:
+            df: DataFrame с данными
+            catalogue: объект каталога
+            year: год для текущей обработки (опционально)
         """
-        self.stdout.write("\n🔹 Начинаем парсинг программ для ЭВМ")
+        year_msg = f" для {year} года" if year else ""
+        self.stdout.write(f"\n🔹 Начинаем парсинг программ для ЭВМ{year_msg}")
 
         stats = {
             'processed': 0,
@@ -131,9 +138,6 @@ class ComputerProgramParser(BaseFIPSParser):
         error_reg_numbers = []
 
         relations_data = []
-        # Данные для IT-специфики
-        programming_languages_data = []
-        operating_systems_data = []
         
         with tqdm(total=len(reg_num_to_row), desc="Подготовка данных IPObject", unit="зап") as pbar:
             for reg_num, row in reg_num_to_row.items():
@@ -217,27 +221,6 @@ class ComputerProgramParser(BaseFIPSParser):
                                 'entity_data': {'full_name': holder}
                             })
 
-                    # ===== IT-специфика для программ =====
-                    # Языки программирования
-                    lang_str = row.get('programming languages')
-                    if not pd.isna(lang_str) and lang_str and lang_str.lower() != 'нет':
-                        langs = self._parse_programming_languages(lang_str)
-                        for lang in langs:
-                            programming_languages_data.append({
-                                'reg_number': reg_num,
-                                'lang_name': lang
-                            })
-
-                    # Операционные системы
-                    os_str = row.get('operating systems')
-                    if not pd.isna(os_str) and os_str and os_str.lower() != 'нет':
-                        oss = self._parse_operating_systems(os_str)
-                        for os_name in oss:
-                            operating_systems_data.append({
-                                'reg_number': reg_num,
-                                'os_name': os_name
-                            })
-
                 except Exception as e:
                     error_reg_numbers.append(reg_num)
                     if len(error_reg_numbers) < 10:
@@ -301,25 +284,12 @@ class ComputerProgramParser(BaseFIPSParser):
             self.stdout.write("🔹 Обработка связей")
             self._process_relations_dataframe(relations_data, reg_to_ip)
 
-        # =====================================================================
-        # ШАГ 7: Обработка языков программирования
-        # =====================================================================
-        if programming_languages_data and not self.command.dry_run:
-            self.stdout.write("🔹 Обработка языков программирования")
-            self._process_programming_languages(programming_languages_data, reg_to_ip)
-
-        # =====================================================================
-        # ШАГ 8: Обработка операционных систем
-        # =====================================================================
-        if operating_systems_data and not self.command.dry_run:
-            self.stdout.write("🔹 Обработка операционных систем")
-            self._process_operating_systems(operating_systems_data, reg_to_ip)
-
         gc.collect()
 
         stats['processed'] = len(df) - stats['skipped'] - stats['errors']
 
-        self.stdout.write(self.style.SUCCESS("\n✅ Парсинг программ для ЭВМ завершен"))
+        year_info = f" для {year} года" if year else ""
+        self.stdout.write(self.style.SUCCESS(f"\n✅ Парсинг программ для ЭВМ{year_info} завершен"))
         self.stdout.write(f"   Создано: {stats['created']}, Обновлено: {stats['updated']}, "
                          f"Без изменений: {stats['unchanged']}")
         self.stdout.write(f"   Пропущено: {stats['skipped']} (из них по дате: {stats['skipped_by_date']})")
@@ -335,7 +305,6 @@ class ComputerProgramParser(BaseFIPSParser):
             return []
 
         authors_str = str(authors_str)
-        # Разделяем по символу новой строки
         authors_list = re.split(r'[\n]\s*', authors_str)
 
         result = []
@@ -344,12 +313,8 @@ class ComputerProgramParser(BaseFIPSParser):
             if not author or author == '""' or author == 'null':
                 continue
 
-            # Убираем кавычки
             author = author.strip('"')
-            # Убираем код страны в скобках (RU) в конце
             author = re.sub(r'\s*\([A-Z]{2}\)$', '', author)
-            
-            # Форматируем имя
             author = self.person_formatter.format(author)
 
             parts = author.split()
@@ -386,7 +351,6 @@ class ComputerProgramParser(BaseFIPSParser):
             return []
         
         holders_str = str(holders_str)
-        # Разделяем по символу новой строки
         holders_list = re.split(r'[\n]\s*', holders_str)
         
         result = []
@@ -394,186 +358,10 @@ class ComputerProgramParser(BaseFIPSParser):
             holder = holder.strip().strip('"')
             if not holder or holder == 'null' or holder == 'None' or holder.lower() == 'нет':
                 continue
-            
-            # Убираем код страны в скобках (RU) в конце
             holder = re.sub(r'\s*\([A-Z]{2}\)$', '', holder)
             result.append(holder)
         
         return result
-
-    def _parse_programming_languages(self, lang_str: str) -> List[str]:
-        """
-        Парсинг строки с языками программирования
-        """
-        if pd.isna(lang_str) or not lang_str:
-            return []
-        
-        lang_str = str(lang_str)
-        # Разделяем по запятой или точке с запятой
-        langs = re.split(r'[;,\s]+', lang_str)
-        
-        result = []
-        for lang in langs:
-            lang = lang.strip()
-            if lang and lang.lower() not in ['нет', 'none', 'null']:
-                result.append(lang)
-        
-        return result
-
-    def _parse_operating_systems(self, os_str: str) -> List[str]:
-        """
-        Парсинг строки с операционными системами
-        """
-        if pd.isna(os_str) or not os_str:
-            return []
-        
-        os_str = str(os_str)
-        # Разделяем по запятой или точке с запятой
-        oss = re.split(r'[;,\s]+', os_str)
-        
-        result = []
-        for os_name in oss:
-            os_name = os_name.strip()
-            if os_name and os_name.lower() not in ['нет', 'none', 'null']:
-                result.append(os_name)
-        
-        return result
-
-    def _process_programming_languages(self, langs_data: List[Dict], reg_to_ip: Dict):
-        """
-        Обработка связей с языками программирования
-        """
-        if not langs_data:
-            return
-        
-        self.stdout.write("   Подготовка связей с языками программирования")
-        
-        # Группируем по reg_number
-        reg_to_langs = defaultdict(set)
-        for item in langs_data:
-            ip_id = reg_to_ip.get(item['reg_number'])
-            if ip_id:
-                reg_to_langs[ip_id].add(item['lang_name'])
-        
-        if not reg_to_langs:
-            return
-        
-        # Получаем все уникальные названия языков
-        all_lang_names = set()
-        for langs in reg_to_langs.values():
-            all_lang_names.update(langs)
-        
-        # Создаем или получаем языки программирования
-        lang_map = {}
-        for lang_name in all_lang_names:
-            lang, created = ProgrammingLanguage.objects.get_or_create(name=lang_name)
-            lang_map[lang_name] = lang
-        
-        # Подготавливаем связи для удаления и создания
-        ip_ids = list(reg_to_langs.keys())
-        
-        # Удаляем старые связи
-        with tqdm(total=len(ip_ids), desc="   Удаление старых связей с языками", unit="ip") as pbar:
-            delete_batch_size = 500
-            for i in range(0, len(ip_ids), delete_batch_size):
-                batch_ids = ip_ids[i:i+delete_batch_size]
-                IPObject.programming_languages.through.objects.filter(
-                    ipobject_id__in=batch_ids
-                ).delete()
-                pbar.update(len(batch_ids))
-        
-        # Создаем новые связи
-        through_objs = []
-        for ip_id, lang_names in reg_to_langs.items():
-            for lang_name in lang_names:
-                lang = lang_map.get(lang_name)
-                if lang:
-                    through_objs.append(
-                        IPObject.programming_languages.through(
-                            ipobject_id=ip_id,
-                            programminglanguage_id=lang.id
-                        )
-                    )
-        
-        if through_objs:
-            with tqdm(total=len(through_objs), desc="   Создание связей с языками", unit="св") as pbar:
-                create_batch_size = 2000
-                for i in range(0, len(through_objs), create_batch_size):
-                    batch = through_objs[i:i+create_batch_size]
-                    IPObject.programming_languages.through.objects.bulk_create(
-                        batch, batch_size=create_batch_size, ignore_conflicts=True
-                    )
-                    pbar.update(len(batch))
-        
-        self.stdout.write("   ✅ Обработка языков программирования завершена")
-
-    def _process_operating_systems(self, os_data: List[Dict], reg_to_ip: Dict):
-        """
-        Обработка связей с операционными системами
-        """
-        if not os_data:
-            return
-        
-        self.stdout.write("   Подготовка связей с операционными системами")
-        
-        # Группируем по reg_number
-        reg_to_os = defaultdict(set)
-        for item in os_data:
-            ip_id = reg_to_ip.get(item['reg_number'])
-            if ip_id:
-                reg_to_os[ip_id].add(item['os_name'])
-        
-        if not reg_to_os:
-            return
-        
-        # Получаем все уникальные названия ОС
-        all_os_names = set()
-        for oss in reg_to_os.values():
-            all_os_names.update(oss)
-        
-        # Создаем или получаем операционные системы
-        os_map = {}
-        for os_name in all_os_names:
-            os_obj, created = OperatingSystem.objects.get_or_create(name=os_name)
-            os_map[os_name] = os_obj
-        
-        # Подготавливаем связи для удаления и создания
-        ip_ids = list(reg_to_os.keys())
-        
-        # Удаляем старые связи
-        with tqdm(total=len(ip_ids), desc="   Удаление старых связей с ОС", unit="ip") as pbar:
-            delete_batch_size = 500
-            for i in range(0, len(ip_ids), delete_batch_size):
-                batch_ids = ip_ids[i:i+delete_batch_size]
-                IPObject.operating_systems.through.objects.filter(
-                    ipobject_id__in=batch_ids
-                ).delete()
-                pbar.update(len(batch_ids))
-        
-        # Создаем новые связи
-        through_objs = []
-        for ip_id, os_names in reg_to_os.items():
-            for os_name in os_names:
-                os_obj = os_map.get(os_name)
-                if os_obj:
-                    through_objs.append(
-                        IPObject.operating_systems.through(
-                            ipobject_id=ip_id,
-                            operatingsystem_id=os_obj.id
-                        )
-                    )
-        
-        if through_objs:
-            with tqdm(total=len(through_objs), desc="   Создание связей с ОС", unit="св") as pbar:
-                create_batch_size = 2000
-                for i in range(0, len(through_objs), create_batch_size):
-                    batch = through_objs[i:i+create_batch_size]
-                    IPObject.operating_systems.through.objects.bulk_create(
-                        batch, batch_size=create_batch_size, ignore_conflicts=True
-                    )
-                    pbar.update(len(batch))
-        
-        self.stdout.write("   ✅ Обработка операционных систем завершена")
 
     def _bulk_create_objects(self, to_create: List[Dict], pbar) -> int:
         """Пакетное создание объектов IPObject"""
@@ -893,6 +681,7 @@ class ComputerProgramParser(BaseFIPSParser):
         
         self.stdout.write(f"      Всего уникальных организаций для обработки: {total_names}")
         
+        # ШАГ 1: Поиск существующих организаций (пачками)
         self.stdout.write(f"      Поиск существующих организаций в БД...")
         
         existing_orgs = {}

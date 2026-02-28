@@ -1,5 +1,6 @@
 """
 Парсер для промышленных образцов с использованием единого DataFrame для связей
+Поддерживает параметр year для обработки по годам
 """
 
 import logging
@@ -56,11 +57,17 @@ class IndustrialDesignParser(BaseFIPSParser):
                 return True
         return False
 
-    def parse_dataframe(self, df, catalogue):
+    def parse_dataframe(self, df, catalogue, year=None):
         """
         Основной метод парсинга DataFrame
+        
+        Args:
+            df: DataFrame с данными
+            catalogue: объект каталога
+            year: год для текущей обработки (опционально)
         """
-        self.stdout.write("\n🔹 Начинаем парсинг промышленных образцов")
+        year_msg = f" для {year} года" if year else ""
+        self.stdout.write(f"\n🔹 Начинаем парсинг промышленных образцов{year_msg}")
 
         stats = {
             'processed': 0,
@@ -283,7 +290,8 @@ class IndustrialDesignParser(BaseFIPSParser):
 
         stats['processed'] = len(df) - stats['skipped'] - stats['errors']
 
-        self.stdout.write(self.style.SUCCESS("\n✅ Парсинг промышленных образцов завершен"))
+        year_info = f" для {year} года" if year else ""
+        self.stdout.write(self.style.SUCCESS(f"\n✅ Парсинг промышленных образцов{year_info} завершен"))
         self.stdout.write(f"   Создано: {stats['created']}, Обновлено: {stats['updated']}, "
                          f"Без изменений: {stats['unchanged']}")
         self.stdout.write(f"   Пропущено: {stats['skipped']} (из них по дате: {stats['skipped_by_date']})")
@@ -609,6 +617,7 @@ class IndustrialDesignParser(BaseFIPSParser):
         
         self.stdout.write(f"      Всего уникальных организаций для обработки: {total_names}")
         
+        # ШАГ 1: Поиск существующих организаций (пачками)
         self.stdout.write(f"      Поиск существующих организаций в БД...")
         
         existing_orgs = {}
