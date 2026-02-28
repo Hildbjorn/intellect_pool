@@ -5,7 +5,7 @@
 <tr style="font-size: 0.9rem;">
   <!-- Вид РИД -->
   <td data-column="type">
-    <span class="badge bg-light text-dark border" style="font-size: 0.75rem; font-weight: normal; white-space: normal; text-align: left;">{{ ip.ip_type.name|default:'—'|truncatechars:25|typus }}</span>
+    <span class="badge bg-light text-dark border" style="font-size: 0.75rem; font-weight: normal; white-space: normal; text-align: left;">{{ ip.ip_type.name|default:'. . .'|truncatechars:25|typus }}</span>
   </td>
 
   <!-- Наименование РИД с тултипом -->
@@ -18,7 +18,7 @@
     {% if ip.creation_year %}
       <span class="badge bg-secondary bg-opacity-10 text-dark">{{ ip.creation_year }}</span>
     {% else %}
-      —
+      . . .
     {% endif %}
   </td>
 
@@ -27,7 +27,7 @@
     {% if ip.registration_date %}
       {{ ip.registration_date|date:'d.m.Y' }}
     {% else %}
-      —
+      . . .
     {% endif %}
   </td>
 
@@ -59,14 +59,14 @@
           {% endif %}
         {% endwith %}
       {% else %}
-        —
+        . . .
       {% endif %}
     {% endwith %}
   </td>
 
   <!-- Вид охранного документа -->
   <td data-column="docType">
-    <span class="small text-muted">{{ ip.ip_type.protection_document_type.name|default:'—'|truncatechars:15|typus }}</span>
+    <span class="small text-muted">{{ ip.ip_type.protection_document_type.name|default:'. . .'|truncatechars:15|typus }}</span>
   </td>
 
   <!-- Номер охранного документа + ссылка -->
@@ -74,18 +74,18 @@
     {% if ip.publication_url %}
       <a href="{{ ip.publication_url }}" target="_blank" class="text-decoration-none" title="Открыть в реестре ФИПС">
         <i class="bi bi-box-arrow-up-right me-1" style="font-size: 0.7rem;"></i>
-        {{ ip.registration_number|default:'—'|truncatechars:12 }}
+        {{ ip.registration_number|default:'. . .'|truncatechars:12 }}
       </a>
     {% else %}
-      {{ ip.registration_number|default:'—' }}
+      {{ ip.registration_number|default:'. . .' }}
     {% endif %}
   </td>
 
   <!-- Дата охранного документа -->
-  <td data-column="docDate" class="text-center small">{{ ip.registration_date|date:'d.m.Y'|default:'—' }}</td>
+  <td data-column="docDate" class="text-center small">{{ ip.registration_date|date:'d.m.Y'|default:'. . .' }}</td>
 
   <!-- Дата подачи заявки -->
-  <td data-column="appDate" class="text-center small">{{ ip.application_date|date:'d.m.Y'|default:'—' }}</td>
+  <td data-column="appDate" class="text-center small">{{ ip.application_date|date:'d.m.Y'|default:'. . .' }}</td>
 
   <!-- Авторы -->
   <td data-column="authors" style="max-width: 150px;">
@@ -101,7 +101,7 @@
           <span class="text-muted small ms-1">+{{ authors|length|add:'-1' }}</span>
         {% endif %}
       {% else %}
-        —
+        . . .
       {% endif %}
     {% endwith %}
   </td>
@@ -111,7 +111,7 @@
     {% if ip.abstract %}
       <i class="bi bi-file-text text-info" style="cursor: help; font-size: 1rem;" data-bs-toggle="popover" data-bs-trigger="hover focus" title="Реферат" data-bs-content="{{ ip.abstract|truncatechars:300 }}"></i>
     {% else %}
-      —
+      . . .
     {% endif %}
   </td>
 
@@ -125,7 +125,7 @@
   </td>
 
   <!-- Дата изменения статуса -->
-  <td data-column="statusDate" class="text-center small">{{ ip.updated_at|date:'d.m.Y'|default:'—' }}</td>
+  <td data-column="statusDate" class="text-center small">{{ ip.updated_at|date:'d.m.Y'|default:'. . .' }}</td>
 
   <!-- Языки программирования -->
   <td data-column="lang" class="text-center">
@@ -133,7 +133,7 @@
       {% if langs %}
         <i class="bi bi-code-square text-primary" style="cursor: help; font-size: 1rem;" data-bs-toggle="popover" data-bs-trigger="hover focus" title="Языки программирования" data-bs-content="{{ langs|join:', ' }}"></i>
       {% else %}
-        —
+        . . .
       {% endif %}
     {% endwith %}
   </td>
@@ -144,7 +144,7 @@
       {% if dbs %}
         <i class="bi bi-database text-warning" style="cursor: help; font-size: 1rem;" data-bs-toggle="popover" data-bs-trigger="hover focus" title="СУБД" data-bs-content="{{ dbs|join:', ' }}"></i>
       {% else %}
-        —
+        . . .
       {% endif %}
     {% endwith %}
   </td>
@@ -154,7 +154,7 @@
     {% if ip.claims %}
       <i class="bi bi-file-earmark-text text-secondary" style="cursor: help; font-size: 1rem;" data-bs-toggle="popover" data-bs-trigger="hover focus" title="Формула" data-bs-content="{{ ip.claims|truncatechars:300 }}"></i>
     {% else %}
-      —
+      . . .
     {% endif %}
   </td>
 
@@ -162,14 +162,22 @@
   <td data-column="expiry" class="text-center small">
     {% if ip.expiration_date %}
       <span class="{% if ip.is_expired %}
+          
+          
           text-danger
+
+
         {% else %}
+          
+          
           text-success
+
+
         {% endif %}">
         {{ ip.expiration_date|date:'d.m.Y' }}
       </span>
     {% else %}
-      —
+      . . .
     {% endif %}
   </td>
 </tr>

@@ -9931,6 +9931,344 @@ main {
     .rid-info-card h6 i, .rid-info-card .h6 i {
       width: 1.25rem; }
 
+.ip-table-container {
+  background-color: #fff;
+  border-radius: 0.75rem;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  overflow: hidden; }
+  .ip-table-container .table-responsive {
+    border-radius: 0.75rem;
+    scrollbar-width: thin;
+    scrollbar-color: #ced4da #e9ecef; }
+    .ip-table-container .table-responsive::-webkit-scrollbar {
+      height: 8px; }
+    .ip-table-container .table-responsive::-webkit-scrollbar-track {
+      background: #e9ecef;
+      border-radius: 4px; }
+    .ip-table-container .table-responsive::-webkit-scrollbar-thumb {
+      background: #ced4da;
+      border-radius: 4px; }
+      .ip-table-container .table-responsive::-webkit-scrollbar-thumb:hover {
+        background: #6c757d; }
+
+#ipTable {
+  min-width: 2000px;
+  margin-bottom: 0;
+  font-size: 0.85rem; }
+  #ipTable thead th {
+    position: sticky;
+    top: 0;
+    background-color: #343a40;
+    color: #fff;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+    padding: 0.75rem 0.5rem;
+    white-space: nowrap;
+    border-bottom: 2px solid #495057;
+    z-index: 10; }
+    #ipTable thead th[data-column] {
+      cursor: pointer; }
+      #ipTable thead th[data-column]:hover {
+        background-color: #495057; }
+      #ipTable thead th[data-column]::after {
+        content: "↕️";
+        margin-left: 0.5rem;
+        opacity: 0.5;
+        font-size: 0.7rem; }
+  #ipTable tbody td {
+    padding: 0.5rem;
+    vertical-align: middle;
+    white-space: nowrap;
+    border-bottom: 1px solid #e9ecef;
+    transition: background-color 0.2s ease; }
+    #ipTable tbody td .badge {
+      font-weight: normal;
+      font-size: 0.75rem;
+      padding: 0.35rem 0.65rem; }
+      #ipTable tbody td .badge.bg-light {
+        background-color: #f8f9fa !important;
+        border: 1px solid #dee2e6;
+        color: #495057; }
+      #ipTable tbody td .badge.bg-success {
+        background-color: #198754 !important; }
+      #ipTable tbody td .badge.bg-secondary {
+        background-color: #adb5bd !important; }
+    #ipTable tbody td i {
+      font-size: 0.9rem;
+      transition: all 0.2s ease; }
+      #ipTable tbody td i[data-bs-toggle="popover"] {
+        cursor: help; }
+        #ipTable tbody td i[data-bs-toggle="popover"]:hover {
+          transform: scale(1.1);
+          opacity: 0.8; }
+      #ipTable tbody td i.bi-building {
+        color: #022456; }
+      #ipTable tbody td i.bi-person {
+        color: #198754; }
+      #ipTable tbody td i.bi-pencil-square {
+        color: #6c757d; }
+      #ipTable tbody td i.bi-code-square {
+        color: #022456; }
+      #ipTable tbody td i.bi-database {
+        color: #ffb300; }
+      #ipTable tbody td i.bi-file-text, #ipTable tbody td i.bi-file-earmark-text {
+        color: #1e60c1; }
+      #ipTable tbody td i.bi-box-arrow-up-right {
+        color: #1e60c1;
+        font-size: 0.7rem; }
+    #ipTable tbody td a {
+      color: #022456;
+      text-decoration: none;
+      transition: color 0.2s ease; }
+      #ipTable tbody td a:hover {
+        color: #00050b;
+        text-decoration: underline; }
+        #ipTable tbody td a:hover i {
+          color: #143f7f; }
+    #ipTable tbody td [title] {
+      cursor: help;
+      border-bottom: 1px dashed #ced4da; }
+  #ipTable tbody tr {
+    transition: background-color 0.2s ease; }
+    #ipTable tbody tr:hover {
+      background-color: rgba(2, 36, 86, 0.03); }
+      #ipTable tbody tr:hover td {
+        background-color: transparent; }
+    #ipTable tbody tr:last-child td {
+      border-bottom: none; }
+  #ipTable .d-none {
+    display: none !important; }
+
+#columnSelector .card {
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem;
+  background-color: #f8f9fa; }
+  #columnSelector .card .form-check {
+    padding-left: 1.75rem;
+    margin-bottom: 0.5rem; }
+    #columnSelector .card .form-check .form-check-input {
+      cursor: pointer; }
+      #columnSelector .card .form-check .form-check-input:checked {
+        background-color: #022456;
+        border-color: #022456; }
+    #columnSelector .card .form-check .form-check-label {
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: #495057; }
+      #columnSelector .card .form-check .form-check-label:hover {
+        color: #022456; }
+
+#filter-form .form-control,
+#filter-form .form-select {
+  font-size: 0.85rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem; }
+  #filter-form .form-control:focus,
+  #filter-form .form-select:focus {
+    border-color: #022456;
+    box-shadow: 0 0 0 0.2rem rgba(2, 36, 86, 0.25); }
+
+#filter-form label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6c757d;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.25rem; }
+
+#filter-form .btn {
+  font-size: 0.85rem;
+  padding: 0.375rem 1rem; }
+  #filter-form .btn i {
+    font-size: 0.9rem; }
+
+[data-ip-stats] {
+  font-size: 0.85rem;
+  color: #6c757d; }
+  [data-ip-stats] i {
+    color: #022456; }
+
+.ip-pagination .pagination {
+  margin-bottom: 0; }
+  .ip-pagination .pagination .page-item {
+    margin: 0 2px; }
+    .ip-pagination .pagination .page-item .page-link {
+      border-radius: 0.375rem;
+      min-width: 38px;
+      text-align: center;
+      font-size: 0.85rem;
+      padding: 0.375rem 0.75rem;
+      color: #022456;
+      border: 1px solid #dee2e6; }
+      .ip-pagination .pagination .page-item .page-link:hover {
+        background-color: #022456;
+        color: #fff;
+        border-color: #022456; }
+    .ip-pagination .pagination .page-item.active .page-link {
+      background-color: #022456;
+      border-color: #022456;
+      color: #fff;
+      font-weight: 600; }
+    .ip-pagination .pagination .page-item.disabled .page-link {
+      color: #ced4da;
+      pointer-events: none; }
+
+.popover {
+  max-width: 400px;
+  font-size: 0.85rem; }
+  .popover .popover-header {
+    background-color: #022456;
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 0.5rem 1rem; }
+  .popover .popover-body {
+    padding: 0.75rem 1rem;
+    max-height: 200px;
+    overflow-y: auto;
+    color: #495057;
+    line-height: 1.5; }
+
+@media (max-width: 768px) {
+  .ip-table-container {
+    border-radius: 0.5rem; }
+    .ip-table-container .table-responsive {
+      border: 1px solid #dee2e6; }
+  #ipTable {
+    font-size: 0.8rem; }
+    #ipTable thead th {
+      font-size: 0.7rem;
+      padding: 0.5rem 0.25rem; }
+    #ipTable tbody td {
+      padding: 0.5rem 0.25rem; }
+      #ipTable tbody td .badge {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.5rem; }
+      #ipTable tbody td i {
+        font-size: 0.8rem; }
+  #columnSelector .col-md-3 {
+    flex: 0 0 50%;
+    max-width: 50%; }
+  .ip-pagination .pagination {
+    justify-content: center;
+    flex-wrap: wrap; }
+    .ip-pagination .pagination .page-item {
+      margin-bottom: 0.25rem; } }
+
+@keyframes rowFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px); }
+  to {
+    opacity: 1;
+    transform: translateX(0); } }
+
+#ipTable tbody tr {
+  animation: rowFadeIn 0.3s ease forwards; }
+  #ipTable tbody tr:nth-child(1) {
+    animation-delay: 0.02s; }
+  #ipTable tbody tr:nth-child(2) {
+    animation-delay: 0.04s; }
+  #ipTable tbody tr:nth-child(3) {
+    animation-delay: 0.06s; }
+  #ipTable tbody tr:nth-child(4) {
+    animation-delay: 0.08s; }
+  #ipTable tbody tr:nth-child(5) {
+    animation-delay: 0.1s; }
+  #ipTable tbody tr:nth-child(6) {
+    animation-delay: 0.12s; }
+  #ipTable tbody tr:nth-child(7) {
+    animation-delay: 0.14s; }
+  #ipTable tbody tr:nth-child(8) {
+    animation-delay: 0.16s; }
+  #ipTable tbody tr:nth-child(9) {
+    animation-delay: 0.18s; }
+  #ipTable tbody tr:nth-child(10) {
+    animation-delay: 0.2s; }
+  #ipTable tbody tr:nth-child(11) {
+    animation-delay: 0.22s; }
+  #ipTable tbody tr:nth-child(12) {
+    animation-delay: 0.24s; }
+  #ipTable tbody tr:nth-child(13) {
+    animation-delay: 0.26s; }
+  #ipTable tbody tr:nth-child(14) {
+    animation-delay: 0.28s; }
+  #ipTable tbody tr:nth-child(15) {
+    animation-delay: 0.3s; }
+  #ipTable tbody tr:nth-child(16) {
+    animation-delay: 0.32s; }
+  #ipTable tbody tr:nth-child(17) {
+    animation-delay: 0.34s; }
+  #ipTable tbody tr:nth-child(18) {
+    animation-delay: 0.36s; }
+  #ipTable tbody tr:nth-child(19) {
+    animation-delay: 0.38s; }
+  #ipTable tbody tr:nth-child(20) {
+    animation-delay: 0.4s; }
+  #ipTable tbody tr:nth-child(21) {
+    animation-delay: 0.42s; }
+  #ipTable tbody tr:nth-child(22) {
+    animation-delay: 0.44s; }
+  #ipTable tbody tr:nth-child(23) {
+    animation-delay: 0.46s; }
+  #ipTable tbody tr:nth-child(24) {
+    animation-delay: 0.48s; }
+  #ipTable tbody tr:nth-child(25) {
+    animation-delay: 0.5s; }
+  #ipTable tbody tr:nth-child(26) {
+    animation-delay: 0.52s; }
+  #ipTable tbody tr:nth-child(27) {
+    animation-delay: 0.54s; }
+  #ipTable tbody tr:nth-child(28) {
+    animation-delay: 0.56s; }
+  #ipTable tbody tr:nth-child(29) {
+    animation-delay: 0.58s; }
+  #ipTable tbody tr:nth-child(30) {
+    animation-delay: 0.6s; }
+  #ipTable tbody tr:nth-child(31) {
+    animation-delay: 0.62s; }
+  #ipTable tbody tr:nth-child(32) {
+    animation-delay: 0.64s; }
+  #ipTable tbody tr:nth-child(33) {
+    animation-delay: 0.66s; }
+  #ipTable tbody tr:nth-child(34) {
+    animation-delay: 0.68s; }
+  #ipTable tbody tr:nth-child(35) {
+    animation-delay: 0.7s; }
+  #ipTable tbody tr:nth-child(36) {
+    animation-delay: 0.72s; }
+  #ipTable tbody tr:nth-child(37) {
+    animation-delay: 0.74s; }
+  #ipTable tbody tr:nth-child(38) {
+    animation-delay: 0.76s; }
+  #ipTable tbody tr:nth-child(39) {
+    animation-delay: 0.78s; }
+  #ipTable tbody tr:nth-child(40) {
+    animation-delay: 0.8s; }
+  #ipTable tbody tr:nth-child(41) {
+    animation-delay: 0.82s; }
+  #ipTable tbody tr:nth-child(42) {
+    animation-delay: 0.84s; }
+  #ipTable tbody tr:nth-child(43) {
+    animation-delay: 0.86s; }
+  #ipTable tbody tr:nth-child(44) {
+    animation-delay: 0.88s; }
+  #ipTable tbody tr:nth-child(45) {
+    animation-delay: 0.9s; }
+  #ipTable tbody tr:nth-child(46) {
+    animation-delay: 0.92s; }
+  #ipTable tbody tr:nth-child(47) {
+    animation-delay: 0.94s; }
+  #ipTable tbody tr:nth-child(48) {
+    animation-delay: 0.96s; }
+  #ipTable tbody tr:nth-child(49) {
+    animation-delay: 0.98s; }
+  #ipTable tbody tr:nth-child(50) {
+    animation-delay: 1s; }
+
 .badge.bg-purple {
   background-color: #6f42c1 !important;
   color: white !important; }
