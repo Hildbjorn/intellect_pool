@@ -388,42 +388,56 @@ class InventionParser(BaseFIPSParser):
         # ШАГ 6.3: Подготовка связей
         # =====================================================================
         self.stdout.write("   Подготовка связей для вставки в БД")
-        
+
         authors_df = df_relations[df_relations['relation_type'] == 'author'].copy()
         holders_df = df_relations[df_relations['relation_type'] == 'holder'].copy()
 
         author_relations = []
         if not authors_df.empty:
-            authors_df['person_id'] = authors_df['entity_name'].map(
-                {name: p.ceo_id for name, p in person_map.items()}
-            )
+            # Создаем маппинг имен в ID
+            person_id_map = {name: p.ceo_id for name, p in person_map.items()}
+            authors_df['person_id'] = authors_df['entity_name'].map(person_id_map)
+            
+            # Убираем строки с отсутствующим person_id (NaN)
+            authors_df = authors_df.dropna(subset=['person_id'])
+            authors_df['person_id'] = authors_df['person_id'].astype(int)
+            
+            # Убираем дубликаты
             authors_unique = authors_df[['ip_id', 'person_id']].drop_duplicates()
             author_relations = [(row['ip_id'], row['person_id']) 
-                               for _, row in authors_unique.iterrows()]
+                            for _, row in authors_unique.iterrows()]
             self.stdout.write(f"   Подготовлено {len(author_relations)} уникальных связей авторов")
 
         holder_person_relations = []
         holder_org_relations = []
-        
+
         if not holders_df.empty:
             holders_persons = holders_df[holders_df['entity_type'] == 'person'].copy()
             if not holders_persons.empty:
-                holders_persons['person_id'] = holders_persons['entity_name'].map(
-                    {name: p.ceo_id for name, p in person_map.items()}
-                )
+                person_id_map = {name: p.ceo_id for name, p in person_map.items()}
+                holders_persons['person_id'] = holders_persons['entity_name'].map(person_id_map)
+                
+                # Убираем строки с отсутствующим person_id
+                holders_persons = holders_persons.dropna(subset=['person_id'])
+                holders_persons['person_id'] = holders_persons['person_id'].astype(int)
+                
                 holders_persons_unique = holders_persons[['ip_id', 'person_id']].drop_duplicates()
                 holder_person_relations = [(row['ip_id'], row['person_id']) 
-                                          for _, row in holders_persons_unique.iterrows()]
+                                        for _, row in holders_persons_unique.iterrows()]
                 self.stdout.write(f"   Подготовлено {len(holder_person_relations)} связей правообладателей-людей")
 
             holders_orgs = holders_df[holders_df['entity_type'] == 'organization'].copy()
             if not holders_orgs.empty:
-                holders_orgs['org_id'] = holders_orgs['entity_name'].map(
-                    {name: o.organization_id for name, o in org_map.items()}
-                )
+                org_id_map = {name: o.organization_id for name, o in org_map.items()}
+                holders_orgs['org_id'] = holders_orgs['entity_name'].map(org_id_map)
+                
+                # Убираем строки с отсутствующим org_id
+                holders_orgs = holders_orgs.dropna(subset=['org_id'])
+                holders_orgs['org_id'] = holders_orgs['org_id'].astype(int)
+                
                 holders_orgs_unique = holders_orgs[['ip_id', 'org_id']].drop_duplicates()
                 holder_org_relations = [(row['ip_id'], row['org_id']) 
-                                       for _, row in holders_orgs_unique.iterrows()]
+                                    for _, row in holders_orgs_unique.iterrows()]
                 self.stdout.write(f"   Подготовлено {len(holder_org_relations)} связей правообладателей-организаций")
 
         # =====================================================================
@@ -468,39 +482,55 @@ class InventionParser(BaseFIPSParser):
         
         self.stdout.write(f"      Всего уникальных людей для обработки: {total_names}")
         
-        # ШАГ 1: Поиск существующих людей (быстрый, без прогресс-бара)
+        # ШАГ 1: Поиск существующих людей (пачками по 100 имен)
         self.stdout.write(f"      Поиск существующих людей в БД...")
         
-        # Собираем все имена для поиска
-        name_conditions = models.Q()
+        # Разбиваем имена на части для поиска
         name_to_parts = {}
-        
         for name in all_names:
             parts = name.split()
             if len(parts) >= 2:
                 last = parts[0]
                 first = parts[1]
                 middle = parts[2] if len(parts) > 2 else ''
-                
-                # Сохраняем для обратного маппинга
                 name_to_parts[name] = (last, first, middle)
-                
-                # Формируем условие для поиска
-                if middle:
-                    name_conditions |= models.Q(last_name=last, first_name=first, middle_name=middle)
-                else:
-                    name_conditions |= models.Q(last_name=last, first_name=first) & \
-                                    (models.Q(middle_name='') | models.Q(middle_name__isnull=True))
-
-        # Поиск существующих людей одним запросом
+        
+        # Ищем людей пачками
         existing_persons = {}
-        if name_conditions:
-            found_count = 0
+        found_count = 0
+        batch_size = 100  # SQLite может обработать ~100 OR условий
+        
+        all_names_list = list(name_to_parts.keys())
+        
+        for i in range(0, len(all_names_list), batch_size):
+            batch_names = all_names_list[i:i+batch_size]
+            
+            # Строим запрос для текущей пачки
+            name_conditions = models.Q()
+            batch_name_to_parts = {}
+            
+            for name in batch_names:
+                last, first, middle = name_to_parts[name]
+                batch_name_to_parts[name] = (last, first, middle)
+                
+                if middle:
+                    name_conditions |= models.Q(
+                        last_name=last, 
+                        first_name=first, 
+                        middle_name=middle
+                    )
+                else:
+                    name_conditions |= models.Q(
+                        last_name=last, 
+                        first_name=first
+                    ) & (models.Q(middle_name='') | models.Q(middle_name__isnull=True))
+            
+            # Выполняем поиск для пачки
             for person in Person.objects.filter(name_conditions).only(
                 'ceo_id', 'last_name', 'first_name', 'middle_name', 'ceo'
             ):
-                # Пытаемся найти соответствие
-                for name, (last, first, middle) in name_to_parts.items():
+                # Ищем соответствие в текущей пачке
+                for name, (last, first, middle) in batch_name_to_parts.items():
                     if (person.last_name == last and 
                         person.first_name == first and 
                         (not middle or person.middle_name == middle)):
@@ -509,7 +539,11 @@ class InventionParser(BaseFIPSParser):
                         found_count += 1
                         break
             
-            self.stdout.write(f"      Найдено существующих: {found_count}")
+            # Показываем прогресс поиска
+            if (i + len(batch_names)) % 500 == 0 or (i + len(batch_names)) >= len(all_names_list):
+                self.stdout.write(f"         Обработано {i + len(batch_names)}/{len(all_names_list)} имен")
+        
+        self.stdout.write(f"      Найдено существующих: {found_count}")
 
         # Определяем новых людей
         new_names = [name for name in all_names if name not in existing_persons]
@@ -575,11 +609,8 @@ class InventionParser(BaseFIPSParser):
             self.stdout.write(f"      Получение созданных людей для маппинга...")
             
             created_names = [p.ceo for p in people_to_create]
-            batch_size = 1000
-            
-            for i in range(0, len(created_names), batch_size):
-                batch_names = created_names[i:i+batch_size]
-                for person in Person.objects.filter(ceo__in=batch_names):
+            for batch in batch_iterator(created_names, 1000):
+                for person in Person.objects.filter(ceo__in=batch):
                     person_map[person.ceo] = person
                     self.person_cache[person.ceo] = person
 
@@ -600,13 +631,22 @@ class InventionParser(BaseFIPSParser):
         
         self.stdout.write(f"      Всего уникальных организаций для обработки: {total_names}")
         
-        # ШАГ 1: Поиск существующих организаций
+        # ШАГ 1: Поиск существующих организаций (пачками)
         self.stdout.write(f"      Поиск существующих организаций в БД...")
         
         existing_orgs = {}
-        for org in Organization.objects.filter(name__in=all_names).only('organization_id', 'name'):
-            existing_orgs[org.name] = org
-            self.organization_cache[org.name] = org
+        batch_size = 100  # SQLite может обработать ~100 условий IN
+        
+        for i in range(0, len(all_names), batch_size):
+            batch_names = all_names[i:i+batch_size]
+            
+            for org in Organization.objects.filter(name__in=batch_names).only('organization_id', 'name'):
+                existing_orgs[org.name] = org
+                self.organization_cache[org.name] = org
+            
+            # Показываем прогресс поиска
+            if (i + len(batch_names)) % 500 == 0 or (i + len(batch_names)) >= len(all_names):
+                self.stdout.write(f"         Обработано {i + len(batch_names)}/{len(all_names)} названий")
         
         self.stdout.write(f"      Найдено существующих: {len(existing_orgs)}")
 
@@ -665,11 +705,8 @@ class InventionParser(BaseFIPSParser):
             self.stdout.write(f"      Получение созданных организаций для маппинга...")
             
             created_names = [o.name for o in orgs_to_create]
-            batch_size = 1000
-            
-            for i in range(0, len(created_names), batch_size):
-                batch_names = created_names[i:i+batch_size]
-                for org in Organization.objects.filter(name__in=batch_names):
+            for batch in batch_iterator(created_names, 1000):
+                for org in Organization.objects.filter(name__in=batch):
                     org_map[org.name] = org
                     self.organization_cache[org.name] = org
 
