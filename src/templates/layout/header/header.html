@@ -1,10 +1,10 @@
 <!-- ==================== ШАПКА САЙТА ==================== -->
-<!--                       
+<!--                         
   Основной header сайта с навигацией:
   - Адаптивное меню (коллапсируется в offcanvas на мобильных)
   - Содержит логотип, основное меню и меню пользователя
   - Фиксированная позиция вверху страницы
-                      -->
+                        -->
 {% load static %}
 {% load widget_tweaks %}
 
@@ -33,6 +33,7 @@
           <ul class="navbar-nav text-light justify-content-center align-items-start align-items-xl-center flex-grow-1 pe-5 gap-2 gap-xl-4 mb-2 mb-xl-0">
             <!-- Основные пункты меню (подключаются как отдельные компоненты) -->
             {% comment %} {% include 'layout/header/main_menu/home_link.html' %} <!-- Ссылка на главную --> {% endcomment %}
+            {% include 'layout/header/main_menu/ip_link.html' %} <!-- Реестр РИД -->
             {% comment %} {% include 'layout/header/main_menu/about_link.html' %} <!-- О сервисе --> {% endcomment %}
             {% comment %} {% include 'layout/header/main_menu/handbook_dropdown_menu.html' %} <!-- Выпадающее меню справочника --> {% endcomment %}
           </ul>

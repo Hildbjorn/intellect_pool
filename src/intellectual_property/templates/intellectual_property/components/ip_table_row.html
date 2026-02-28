@@ -1,0 +1,75 @@
+{% load common_tags %}
+<tr>
+  <td>{{ ip.ip_type.name|default:'—'|typus }}</td>
+  <td>{{ ip.name|truncatechars:50|typus }}</td>
+  <td>{{ ip.creation_year|default:'—' }}</td>
+  <td>{{ ip.registration_number|default:'—' }}</td>
+  <td>{{ ip.registration_date|date:'d.m.Y'|default:'—' }}</td>
+  <td>
+    {% with owners=ip.all_owners %}
+      {% if owners %}
+        {% for owner in owners|slice:':2' %}
+          {% if owner.last_name %}
+            {# Это Person #}
+            {{ owner.get_short_name }}
+          {% else %}
+            {# Это Organization #}
+            {{ owner.short_name|default:owner.name|truncatechars:30 }}
+          {% endif %}
+          {% if not forloop.last %}, {% endif %}
+        {% endfor %}
+        {% if owners|length > 2 %}...{% endif %}
+      {% else %}
+        —
+      {% endif %}
+    {% endwith %}
+  </td>
+  <td>—</td> {# Объем прав РФ #}
+  <td>{{ ip.ip_type.protection_document_type.name|default:'—'|typus }}</td>
+  <td>{{ ip.registration_number|default:'—' }}</td> {# Номер охранного документа #}
+  <td>{{ ip.registration_date|date:'d.m.Y'|default:'—' }}</td> {# Дата охранного документа #}
+  <td>—</td> {# Номер заявки #}
+  <td>{{ ip.application_date|date:'d.m.Y'|default:'—' }}</td>
+  <td>
+    {% with authors=ip.authors.all %}
+      {% if authors %}
+        {% for author in authors|slice:':2' %}
+          {{ author.get_short_name }}{% if not forloop.last %}, {% endif %}
+        {% endfor %}
+        {% if authors|length > 2 %}...{% endif %}
+      {% else %}
+        —
+      {% endif %}
+    {% endwith %}
+  </td>
+  <td>—</td> {# Секретность #}
+  <td>—</td> {# Лицензиаты #}
+  <td>{{ ip.abstract|truncatechars:30|default:'—' }}</td>
+  <td>—</td> {# Адрес для переписки #}
+  <td>
+    {% if ip.actual %}
+      <span class="badge bg-success">Действует</span>
+    {% else %}
+      <span class="badge bg-secondary">Не действует</span>
+    {% endif %}
+  </td>
+  <td>{{ ip.updated_at|date:'d.m.Y'|default:'—' }}</td>
+  <td>
+    {% for lang in ip.programming_languages.all %}
+      {{ lang.name }}{% if not forloop.last %}, {% endif %}
+    {% empty %}
+      —
+    {% endfor %}
+  </td>
+  <td>
+    {% for db in ip.dbms.all %}
+      {{ db.name }}{% if not forloop.last %}, {% endif %}
+    {% empty %}
+      —
+    {% endfor %}
+  </td>
+  <td>—</td> {# Объем #}
+  <td>{{ ip.claims|truncatechars:30|default:'—' }}</td>
+  <td>—</td> {# Цитируемые документы #}
+  <td>{{ ip.expiration_date|date:'d.m.Y'|default:'—' }}</td>
+</tr>

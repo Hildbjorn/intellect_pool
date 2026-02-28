@@ -1,0 +1,18 @@
+{% load static %}
+<!-- ========== ССЫЛКА "РИД" ========== -->
+<!--
+  Пункт главного меню навигации
+  Ведет на раздел "РИД" на главной странице
+-->
+
+<li class="nav-item">
+  <a class="nav-link btn btn-sm btn-link text-nowrap {% if request.path == '/ip_list' %}active{% endif %}"
+      {% if request.path == '/ip_list' %}
+          aria-current="page"
+      {% else %}
+          aria-current="false"
+      {% endif %}
+      href="{% url 'ip_list' %}">
+      <i class="bi bi-file-earmark-text me-2"></i>Реестр&nbsp;РИД
+  </a>
+</li>

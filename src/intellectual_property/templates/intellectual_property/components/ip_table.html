@@ -1,0 +1,42 @@
+{% load static %}
+{% load common_tags %}
+<table class="table table-striped table-hover align-middle mb-0">
+  <thead class="table-dark">
+    <tr>
+      <th scope="col">Вид РИД</th>
+      <th scope="col">Наименование РИД</th>
+      <th scope="col">Год создания</th>
+      <th scope="col">Рег. номер</th>
+      <th scope="col">Дата регистрации</th>
+      <th scope="col">Правообладатели</th>
+      <th scope="col">Объем прав РФ</th>
+      <th scope="col">Вид охран. документа</th>
+      <th scope="col">Номер охран. документа</th>
+      <th scope="col">Дата охран. документа</th>
+      <th scope="col">Номер заявки</th>
+      <th scope="col">Дата подачи заявки</th>
+      <th scope="col">Авторы</th>
+      <th scope="col">Секретность</th>
+      <th scope="col">Лицензиаты</th>
+      <th scope="col">Реферат</th>
+      <th scope="col">Адрес для переписки</th>
+      <th scope="col">Статус</th>
+      <th scope="col">Дата изм. статуса</th>
+      <th scope="col">Язык прогр.</th>
+      <th scope="col">СУБД</th>
+      <th scope="col">Объем</th>
+      <th scope="col">Формула</th>
+      <th scope="col">Цитируемые документы</th>
+      <th scope="col">Срок действия</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for ip in ip_objects %}
+      {% include 'intellectual_property/components/ip_table_row.html' with ip=ip %}
+    {% empty %}
+      <tr>
+        <td colspan="25" class="text-center text-muted py-4">Записей не найдено.</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>

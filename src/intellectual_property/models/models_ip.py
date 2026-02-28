@@ -488,7 +488,6 @@ class IPObject(models.Model):
         return list(chain(
             self.owner_persons.all(),
             self.owner_organizations.all(),
-            self.owner_foivs.all()
         ))
     
     @property
