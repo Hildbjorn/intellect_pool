@@ -107,7 +107,7 @@ class InventionParser(BaseFIPSParser):
         batch_size = 500
         reg_numbers = list(reg_num_to_row.keys())
         
-        # Прогресс-бар с редким обновлением (убрали mininterval)
+        # Прогресс-бар с редким обновлением
         with self.progress.task("Загрузка пачками", 
                                total=len(reg_numbers), 
                                unit="зап") as pbar:
@@ -138,7 +138,7 @@ class InventionParser(BaseFIPSParser):
 
         relations_data = []
         
-        # Прогресс-бар с редким обновлением (убрали mininterval)
+        # Прогресс-бар с редким обновлением
         with self.progress.task("Подготовка данных IPObject", 
                                total=len(reg_num_to_row), 
                                unit="зап") as pbar:
@@ -150,6 +150,14 @@ class InventionParser(BaseFIPSParser):
                         if existing.updated_at and existing.updated_at.date() >= upload_date:
                             skipped_by_date.append(reg_num)
                             pbar.update(1)
+                            # Обновляем статистику прямо в прогресс-баре
+                            pbar.set_postfix(
+                                новые=len(to_create),
+                                обнов=len(to_update),
+                                без_изм=unchanged_count,
+                                пропущ=len(skipped_by_date),
+                                ошибок=len(error_reg_numbers)
+                            )
                             continue
 
                     name = self.clean_string(row.get('invention name'))
