@@ -460,10 +460,16 @@ class InventionParser(BaseFIPSParser):
 
     def _create_persons_bulk(self, persons_df: pd.DataFrame) -> Dict:
         """
-        Пакетное создание людей из DataFrame (ОПТИМИЗИРОВАНО)
+        Пакетное создание людей из DataFrame с индикацией прогресса
         """
         person_map = {}
         all_names = persons_df['entity_name'].tolist()
+        total_names = len(all_names)
+        
+        self.stdout.write(f"      Всего уникальных людей для обработки: {total_names}")
+        
+        # ШАГ 1: Поиск существующих людей (быстрый, без прогресс-бара)
+        self.stdout.write(f"      Поиск существующих людей в БД...")
         
         # Собираем все имена для поиска
         name_conditions = models.Q()
@@ -484,11 +490,12 @@ class InventionParser(BaseFIPSParser):
                     name_conditions |= models.Q(last_name=last, first_name=first, middle_name=middle)
                 else:
                     name_conditions |= models.Q(last_name=last, first_name=first) & \
-                                      (models.Q(middle_name='') | models.Q(middle_name__isnull=True))
+                                    (models.Q(middle_name='') | models.Q(middle_name__isnull=True))
 
         # Поиск существующих людей одним запросом
         existing_persons = {}
         if name_conditions:
+            found_count = 0
             for person in Person.objects.filter(name_conditions).only(
                 'ceo_id', 'last_name', 'first_name', 'middle_name', 'ceo'
             ):
@@ -499,13 +506,20 @@ class InventionParser(BaseFIPSParser):
                         (not middle or person.middle_name == middle)):
                         existing_persons[name] = person
                         self.person_cache[name] = person
+                        found_count += 1
                         break
+            
+            self.stdout.write(f"      Найдено существующих: {found_count}")
 
         # Определяем новых людей
         new_names = [name for name in all_names if name not in existing_persons]
+        new_count = len(new_names)
+        
+        self.stdout.write(f"      Новых людей для создания: {new_count}")
         
         if new_names:
-            self.stdout.write(f"      Создание {len(new_names)} новых людей")
+            # ШАГ 2: Подготовка данных для создания
+            self.stdout.write(f"      Подготовка данных для создания...")
             
             max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
             existing_slugs = set(Person.objects.values_list('slug', flat=True)[:100000])
@@ -542,40 +556,69 @@ class InventionParser(BaseFIPSParser):
                     )
                     people_to_create.append(person)
             
-            # Массовое создание
-            if people_to_create:
-                for batch in batch_iterator(people_to_create, 500):
-                    Person.objects.bulk_create(batch, batch_size=500)
+            # ШАГ 3: Массовое создание с индикацией прогресса
+            self.stdout.write(f"      Создание людей пачками по 500...")
+            
+            batch_size = 500
+            created_count = 0
+            
+            for batch in batch_iterator(people_to_create, batch_size):
+                Person.objects.bulk_create(batch, batch_size=batch_size)
+                created_count += len(batch)
                 
-                # Получаем созданных людей для маппинга
-                created_names = [p.ceo for p in people_to_create]
-                for person in Person.objects.filter(ceo__in=created_names):
+                # Показываем прогресс каждые 5000 записей
+                if created_count % 5000 == 0 or created_count == new_count:
+                    percent = (created_count / new_count) * 100
+                    self.stdout.write(f"         Создано {created_count}/{new_count} ({percent:.1f}%)")
+            
+            # ШАГ 4: Получение созданных людей для маппинга
+            self.stdout.write(f"      Получение созданных людей для маппинга...")
+            
+            created_names = [p.ceo for p in people_to_create]
+            batch_size = 1000
+            
+            for i in range(0, len(created_names), batch_size):
+                batch_names = created_names[i:i+batch_size]
+                for person in Person.objects.filter(ceo__in=batch_names):
                     person_map[person.ceo] = person
                     self.person_cache[person.ceo] = person
 
         # Добавляем существующих людей в маппинг
         person_map.update(existing_persons)
         
+        self.stdout.write(f"      ✅ Обработано людей: {len(person_map)}")
+        
         return person_map
 
     def _create_organizations_bulk(self, orgs_df: pd.DataFrame) -> Dict:
         """
-        Пакетное создание организаций из DataFrame (ОПТИМИЗИРОВАНО)
+        Пакетное создание организаций из DataFrame с индикацией прогресса
         """
         org_map = {}
         all_names = orgs_df['entity_name'].tolist()
+        total_names = len(all_names)
         
-        # Поиск существующих организаций одним запросом
+        self.stdout.write(f"      Всего уникальных организаций для обработки: {total_names}")
+        
+        # ШАГ 1: Поиск существующих организаций
+        self.stdout.write(f"      Поиск существующих организаций в БД...")
+        
         existing_orgs = {}
         for org in Organization.objects.filter(name__in=all_names).only('organization_id', 'name'):
             existing_orgs[org.name] = org
             self.organization_cache[org.name] = org
+        
+        self.stdout.write(f"      Найдено существующих: {len(existing_orgs)}")
 
         # Определяем новые организации
         new_names = [name for name in all_names if name not in existing_orgs]
+        new_count = len(new_names)
+        
+        self.stdout.write(f"      Новых организаций для создания: {new_count}")
         
         if new_names:
-            self.stdout.write(f"      Создание {len(new_names)} новых организаций")
+            # ШАГ 2: Подготовка данных для создания
+            self.stdout.write(f"      Подготовка данных для создания...")
             
             max_id = Organization.objects.aggregate(models.Max('organization_id'))['organization_id__max'] or 0
             existing_slugs = set(Organization.objects.values_list('slug', flat=True)[:50000])
@@ -603,19 +646,37 @@ class InventionParser(BaseFIPSParser):
                 )
                 orgs_to_create.append(org)
             
-            # Массовое создание
-            if orgs_to_create:
-                for batch in batch_iterator(orgs_to_create, 500):
-                    Organization.objects.bulk_create(batch, batch_size=500)
+            # ШАГ 3: Массовое создание с индикацией прогресса
+            self.stdout.write(f"      Создание организаций пачками по 500...")
+            
+            batch_size = 500
+            created_count = 0
+            
+            for batch in batch_iterator(orgs_to_create, batch_size):
+                Organization.objects.bulk_create(batch, batch_size=batch_size)
+                created_count += len(batch)
                 
-                # Получаем созданные организации для маппинга
-                created_names = [o.name for o in orgs_to_create]
-                for org in Organization.objects.filter(name__in=created_names):
+                # Показываем прогресс каждые 5000 записей
+                if created_count % 5000 == 0 or created_count == new_count:
+                    percent = (created_count / new_count) * 100
+                    self.stdout.write(f"         Создано {created_count}/{new_count} ({percent:.1f}%)")
+            
+            # ШАГ 4: Получение созданных организаций для маппинга
+            self.stdout.write(f"      Получение созданных организаций для маппинга...")
+            
+            created_names = [o.name for o in orgs_to_create]
+            batch_size = 1000
+            
+            for i in range(0, len(created_names), batch_size):
+                batch_names = created_names[i:i+batch_size]
+                for org in Organization.objects.filter(name__in=batch_names):
                     org_map[org.name] = org
                     self.organization_cache[org.name] = org
 
         # Добавляем существующие организации в маппинг
         org_map.update(existing_orgs)
+        
+        self.stdout.write(f"      ✅ Обработано организаций: {len(org_map)}")
         
         return org_map
 
