@@ -159,6 +159,53 @@ class Command(BaseCommand):
         except:
             return None
 
+    # ============== НОВЫЙ МЕТОД ==============
+    def get_years_from_catalogue(self, catalogue):
+        """
+        Определяет список годов, присутствующих в CSV файле каталога
+        С подробным отладочным выводом
+        """
+        df = self.load_csv(catalogue)
+        if df is None or df.empty:
+            self.stdout.write(self.style.WARNING("  ⚠️ Не удалось загрузить CSV для определения годов"))
+            return []
+        
+        if 'registration date' not in df.columns:
+            self.stdout.write(self.style.WARNING("  ⚠️ Колонка 'registration date' не найдена, не могу определить годы"))
+            return []
+        
+        # Извлекаем годы
+        df['_year'] = df['registration date'].apply(self.extract_year_from_date)
+        all_years = sorted(df['_year'].dropna().unique().astype(int).tolist())
+        
+        if not all_years:
+            self.stdout.write(self.style.WARNING("  ⚠️ Не удалось извлечь годы из дат"))
+            return []
+        
+        # Подробный отладочный вывод
+        self.stdout.write(f"  📊 Все годы в каталоге: {all_years[0]} - {all_years[-1]} (всего {len(all_years)} лет)")
+        
+        # Показываем первые и последние годы для наглядности
+        if len(all_years) > 20:
+            self.stdout.write(f"     Первые 10 лет: {all_years[:10]}")
+            self.stdout.write(f"     Последние 10 лет: {all_years[-10:]}")
+        else:
+            self.stdout.write(f"     Все годы: {all_years}")
+        
+        # Применяем фильтр по минимальному году
+        if self.min_year and not self.skip_filters:
+            years = [y for y in all_years if y >= self.min_year]
+            if years:
+                self.stdout.write(f"  🔍 После фильтрации (min_year={self.min_year}): {years[0]} - {years[-1]} (всего {len(years)} лет)")
+            else:
+                self.stdout.write(f"  🔍 После фильтрации (min_year={self.min_year}): нет данных")
+            return years
+        else:
+            # Если skip_filters=True или min_year не задан, возвращаем все годы
+            if self.skip_filters:
+                self.stdout.write(f"  🔍 Фильтрация отключена (--skip-filters), обрабатываются все годы")
+            return all_years
+
     def get_years_from_catalogue(self, catalogue):
         """
         Определяет список годов, присутствующих в CSV файле каталога
