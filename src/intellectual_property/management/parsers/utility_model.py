@@ -481,7 +481,7 @@ class UtilityModelParser(BaseFIPSParser):
         """
         Пакетное создание людей из DataFrame с индикацией прогресса
         Всегда возвращает словарь (даже пустой)
-        Исправлена проблема с дублированием slug
+        Исправлена проблема с дублированием ceo_id и slug
         """
         person_map = {}
         
@@ -567,17 +567,11 @@ class UtilityModelParser(BaseFIPSParser):
         if new_names:
             self.stdout.write(f"      Подготовка данных для создания...")
             
-            # Получаем актуальный max_id
-            max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
-            next_id = max_id + 1
-            self.stdout.write(f"         Начальный ID: {next_id}")
-            
-            # Получаем ВСЕ существующие slugs для проверки уникальности
+            # Получаем все существующие slugs
             existing_slugs = set(Person.objects.values_list('slug', flat=True))
             self.stdout.write(f"         Существующих slug-ов в БД: {len(existing_slugs)}")
             
             people_to_create = []
-            slug_counter = {}  # Счетчик для каждого базового slug-а
             
             for idx, name in enumerate(new_names):
                 if pd.isna(name) or not name:
@@ -603,17 +597,13 @@ class UtilityModelParser(BaseFIPSParser):
                     # Генерируем уникальный slug
                     unique_slug = base_slug
                     counter = 1
-                    
-                    # Проверяем, не использовался ли такой slug раньше
                     while unique_slug in existing_slugs:
                         unique_slug = f"{base_slug}-{counter}"
                         counter += 1
-                    
-                    # Добавляем в множество существующих, чтобы следующие итерации учитывали
                     existing_slugs.add(unique_slug)
                     
+                    # НЕ назначаем ceo_id здесь! Будем получать при создании
                     person = Person(
-                        ceo_id=next_id + idx,
                         ceo=name,
                         last_name=last_name,
                         first_name=first_name,
@@ -632,14 +622,32 @@ class UtilityModelParser(BaseFIPSParser):
                 for i in range(0, len(people_to_create), BATCH_SIZE):
                     batch = people_to_create[i:i+BATCH_SIZE]
                     
-                    # Проверяем дубликаты в этой пачке по slug
-                    batch_slugs = [p.slug for p in batch]
-                    existing_in_batch = Person.objects.filter(slug__in=batch_slugs).values_list('slug', flat=True)
+                    # ПОЛУЧАЕМ АКТУАЛЬНЫЙ MAX_ID ПЕРЕД КАЖДОЙ ПАЧКОЙ!
+                    max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
+                    next_id = max_id + 1
                     
-                    if existing_in_batch:
-                        self.stdout.write(self.style.WARNING(f"         Найдены дубликаты slug-ов в пачке: {list(existing_in_batch)}"))
+                    # Назначаем ID для текущей пачки
+                    for j, person in enumerate(batch):
+                        person.ceo_id = next_id + j
+                    
+                    # Проверяем дубликаты в этой пачке по ceo_id и slug
+                    batch_ceo_ids = [p.ceo_id for p in batch]
+                    batch_slugs = [p.slug for p in batch]
+                    
+                    existing_by_ceo = Person.objects.filter(ceo_id__in=batch_ceo_ids).values_list('ceo_id', flat=True)
+                    existing_by_slug = Person.objects.filter(slug__in=batch_slugs).values_list('slug', flat=True)
+                    
+                    if existing_by_ceo or existing_by_slug:
+                        self.stdout.write(self.style.WARNING(f"         Найдены дубликаты в пачке:"))
+                        if existing_by_ceo:
+                            self.stdout.write(self.style.WARNING(f"            по ceo_id: {list(existing_by_ceo)}"))
+                        if existing_by_slug:
+                            self.stdout.write(self.style.WARNING(f"            по slug: {list(existing_by_slug)}"))
+                        
                         # Фильтруем batch, убирая существующих
-                        batch = [p for p in batch if p.slug not in existing_in_batch]
+                        batch = [p for p in batch 
+                                if p.ceo_id not in existing_by_ceo 
+                                and p.slug not in existing_by_slug]
                     
                     if not batch:
                         continue
@@ -648,37 +656,63 @@ class UtilityModelParser(BaseFIPSParser):
                         # Пробуем создать пачкой
                         Person.objects.bulk_create(batch, batch_size=BATCH_SIZE, ignore_conflicts=False)
                         created_count += len(batch)
+                        self.stdout.write(self.style.SUCCESS(f"         ✅ Создана пачка из {len(batch)} человек"))
                     except Exception as e:
                         self.stdout.write(self.style.WARNING(f"         Ошибка при создании пачки: {e}"))
-                        # Если пачка не создалась, пробуем по одному
+                        # Если пачка не создалась, пробуем по одному с перебором ID
                         for person in batch:
-                            try:
-                                # Проверяем еще раз перед созданием
-                                if not Person.objects.filter(slug=person.slug).exists():
+                            created = False
+                            max_attempts = 10
+                            
+                            for attempt in range(max_attempts):
+                                try:
+                                    # Получаем свежий max_id перед каждой попыткой
+                                    current_max = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
+                                    person.ceo_id = current_max + 1
+                                    
+                                    # Проверяем, нет ли уже такого slug
+                                    if Person.objects.filter(slug=person.slug).exists():
+                                        # Генерируем новый slug
+                                        base_slug = person.slug.split('-')[0]  # берем основу
+                                        counter = 1
+                                        new_slug = f"{base_slug}-{counter}"
+                                        while Person.objects.filter(slug=new_slug).exists():
+                                            counter += 1
+                                            new_slug = f"{base_slug}-{counter}"
+                                        person.slug = new_slug
+                                    
                                     person.save()
                                     created_count += 1
-                                else:
-                                    self.stdout.write(self.style.WARNING(f"            Пропущен (slug уже существует): {person.slug}"))
-                            except Exception as e2:
-                                self.stdout.write(self.style.WARNING(f"            Не удалось создать {person.ceo}: {e2}"))
+                                    created = True
+                                    self.stdout.write(self.style.SUCCESS(f"            ✅ Создан: {person.ceo} (ID: {person.ceo_id})"))
+                                    break
+                                except Exception as e2:
+                                    if attempt == max_attempts - 1:
+                                        self.stdout.write(self.style.ERROR(f"            ❌ Не удалось создать {person.ceo} после {max_attempts} попыток: {e2}"))
+                                    continue
+                            
+                            if not created:
+                                # Если совсем не получается, пропускаем
+                                self.stdout.write(self.style.WARNING(f"            ⚠️ Пропущен: {person.ceo}"))
                     
                     if created_count % 5000 == 0 or created_count >= new_count:
                         percent = (created_count / new_count) * 100 if new_count > 0 else 0
-                        self.stdout.write(f"         Создано {created_count}/{new_count} ({percent:.1f}%)")
+                        self.stdout.write(f"         Прогресс: {created_count}/{new_count} ({percent:.1f}%)")
                 
                 self.stdout.write(f"      Получение созданных людей для маппинга...")
                 
                 # Получаем созданных людей
-                created_names = [p.ceo for p in people_to_create[:created_count]]
-                for batch in batch_iterator(created_names, 1000):
-                    for person in Person.objects.filter(ceo__in=batch):
-                        person_map[person.ceo] = person
-                        self.person_cache[person.ceo] = person
+                if created_count > 0:
+                    created_names = [p.ceo for p in people_to_create[:created_count]]
+                    for batch in batch_iterator(created_names, 1000):
+                        for person in Person.objects.filter(ceo__in=batch):
+                            person_map[person.ceo] = person
+                            self.person_cache[person.ceo] = person
 
         # Добавляем существующих людей в маппинг
         person_map.update(existing_persons)
         
-        self.stdout.write(f"      ✅ Обработано людей: {len(person_map)}")
+        self.stdout.write(f"      ✅ Обработано людей: {len(person_map)} (создано новых: {len([p for p in person_map.values() if p.ceo_id > 0])})")
         
         return person_map
 
