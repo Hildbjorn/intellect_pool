@@ -21,29 +21,22 @@ class ProgressManager:
         self._current_bar = None  # Текущий активный прогресс-бар
     
     @contextmanager
-    def task(self, description: str, total: Optional[int] = None, unit: str = "элем", mininterval: float = 0.1):
+    def task(self, description: str, total: Optional[int] = None, unit: str = "элем"):
         """
         Контекстный менеджер для задачи с прогресс-баром
         Все задачи используют одну строку (предыдущая закрывается)
-        
-        Args:
-            description: Описание задачи
-            total: Общее количество элементов
-            unit: Единица измерения
-            mininterval: Минимальный интервал обновления в секундах
         """
         # Если есть предыдущий бар, закрываем его
         if self._current_bar is not None:
             self._current_bar.close()
         
-        # Создаем новый прогресс-бар (без position, чтобы был в одной строке)
+        # Создаем новый прогресс-бар
         bar = tqdm(
             total=total,
             desc=description,
             unit=unit,
             file=self.file,
-            leave=False,  # Не оставлять после завершения
-            mininterval=mininterval,  # Добавлен параметр mininterval
+            leave=False,
             bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
         )
         
@@ -54,19 +47,17 @@ class ProgressManager:
         finally:
             bar.close()
             self._current_bar = None
-            # Печатаем пустую строку для отделения следующего вывода
             print(file=self.file)
     
     @contextmanager
-    def subtask(self, description: str, total: Optional[int] = None, unit: str = "элем", mininterval: float = 0.1):
+    def subtask(self, description: str, total: Optional[int] = None, unit: str = "элем"):
         """Алиас для task (для обратной совместимости)"""
-        with self.task(description, total, unit, mininterval) as bar:
+        with self.task(description, total, unit) as bar:
             yield bar
     
     def step(self, message: str):
         """Вывод сообщения о шаге (всегда с новой строки)"""
         if self._current_bar is not None:
-            # Используем tqdm.write для вывода поверх прогресс-бара
             self._current_bar.write(f"🔹 {message}")
         else:
             print(f"🔹 {message}", file=self.file)

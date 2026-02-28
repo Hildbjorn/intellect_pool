@@ -10,12 +10,13 @@ from collections import defaultdict
 import pandas as pd
 from django.db import models, transaction
 from django.utils.text import slugify
+from tqdm import tqdm
 
 from intellectual_property.models import IPObject, IPType, Person
 from core.models import Organization
 
 from .base import BaseFIPSParser
-from ..utils.progress import ProgressManager, batch_iterator
+from ..utils.progress import batch_iterator
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ class InventionParser(BaseFIPSParser):
         """
         Основной метод парсинга DataFrame
         """
-        self.progress.step("Начинаем парсинг изобретений")
+        self.stdout.write("\n🔹 Начинаем парсинг изобретений")
 
         stats = {
             'processed': 0,
@@ -75,7 +76,7 @@ class InventionParser(BaseFIPSParser):
         # Получаем тип РИД
         ip_type = self.get_ip_type()
         if not ip_type:
-            self.progress.error("Тип РИД 'invention' не найден в БД")
+            self.stdout.write(self.style.ERROR("  ❌ Тип РИД 'invention' не найден в БД"))
             stats['errors'] += 1
             return stats
 
@@ -84,7 +85,7 @@ class InventionParser(BaseFIPSParser):
         # =====================================================================
         # ШАГ 1: Сбор регистрационных номеров
         # =====================================================================
-        self.progress.step("Чтение CSV и сбор регистрационных номеров")
+        self.stdout.write("🔹 Чтение CSV и сбор регистрационных номеров")
         
         reg_num_to_row = {}
         skipped_empty = 0
@@ -96,22 +97,18 @@ class InventionParser(BaseFIPSParser):
             else:
                 skipped_empty += 1
 
-        self.progress.step(f"Всего записей в CSV: {len(reg_num_to_row)} (пропущено пустых: {skipped_empty})")
+        self.stdout.write(f"🔹 Всего записей в CSV: {len(reg_num_to_row)} (пропущено пустых: {skipped_empty})")
 
         # =====================================================================
         # ШАГ 2: Загрузка существующих записей из БД
         # =====================================================================
-        self.progress.step("Загрузка существующих записей из БД")
+        self.stdout.write("🔹 Загрузка существующих записей из БД")
         
         existing_objects = {}
         batch_size = 500
         reg_numbers = list(reg_num_to_row.keys())
         
-        # Прогресс-бар с редким обновлением
-        with self.progress.task("Загрузка пачками", 
-                               total=len(reg_numbers), 
-                               unit="зап") as pbar:
-            
+        with tqdm(total=len(reg_numbers), desc="Загрузка пачками", unit="зап") as pbar:
             for i in range(0, len(reg_numbers), batch_size):
                 batch_numbers = reg_numbers[i:i+batch_size]
                 
@@ -123,12 +120,12 @@ class InventionParser(BaseFIPSParser):
                 
                 pbar.update(len(batch_numbers))
 
-        self.progress.step(f"Найдено в БД: {len(existing_objects)}")
+        self.stdout.write(f"🔹 Найдено в БД: {len(existing_objects)}")
 
         # =====================================================================
         # ШАГ 3: Подготовка данных для IPObject
         # =====================================================================
-        self.progress.step("Подготовка данных IPObject")
+        self.stdout.write("🔹 Подготовка данных IPObject")
         
         to_create = []
         to_update = []
@@ -138,11 +135,7 @@ class InventionParser(BaseFIPSParser):
 
         relations_data = []
         
-        # Прогресс-бар с редким обновлением
-        with self.progress.task("Подготовка данных IPObject", 
-                               total=len(reg_num_to_row), 
-                               unit="зап") as pbar:
-
+        with tqdm(total=len(reg_num_to_row), desc="Подготовка данных IPObject", unit="зап") as pbar:
             for reg_num, row in reg_num_to_row.items():
                 try:
                     if not self.command.force and upload_date and reg_num in existing_objects:
@@ -150,14 +143,6 @@ class InventionParser(BaseFIPSParser):
                         if existing.updated_at and existing.updated_at.date() >= upload_date:
                             skipped_by_date.append(reg_num)
                             pbar.update(1)
-                            # Обновляем статистику прямо в прогресс-баре
-                            pbar.set_postfix(
-                                новые=len(to_create),
-                                обнов=len(to_update),
-                                без_изм=unchanged_count,
-                                пропущ=len(skipped_by_date),
-                                ошибок=len(error_reg_numbers)
-                            )
                             continue
 
                     name = self.clean_string(row.get('invention name'))
@@ -233,22 +218,16 @@ class InventionParser(BaseFIPSParser):
                 except Exception as e:
                     error_reg_numbers.append(reg_num)
                     if len(error_reg_numbers) < 10:
-                        self.progress.error(f"Ошибка подготовки записи {reg_num}: {e}")
+                        self.stdout.write(self.style.ERROR(f"\n❌ Ошибка подготовки записи {reg_num}: {e}"))
                     elif len(error_reg_numbers) == 10:
-                        self.progress.warning("... и далее ошибки подавляются")
+                        self.stdout.write(self.style.WARNING("\n⚠️ ... и далее ошибки подавляются"))
                     
                     logger.error(f"Error preparing invention {reg_num}: {e}", exc_info=True)
 
                 pbar.update(1)
-                
-                # Выводим статистику редко (каждые 50000 записей)
-                if pbar.n % 50000 == 0:
-                    self.progress.step(f"Обработано {pbar.n} записей: новых={len(to_create)}, "
-                                      f"обнов={len(to_update)}, без изм={unchanged_count}, "
-                                      f"пропущ={len(skipped_by_date)}, ошибок={len(error_reg_numbers)}")
 
-        self.progress.step(f"Итого: новых={len(to_create)}, обновление={len(to_update)}, "
-                          f"без изменений={unchanged_count}, ошибок={len(error_reg_numbers)}")
+        self.stdout.write(f"🔹 Итого: новых={len(to_create)}, обновление={len(to_update)}, "
+                         f"без изменений={unchanged_count}, ошибок={len(error_reg_numbers)}")
 
         stats['skipped_by_date'] = len(skipped_by_date)
         stats['skipped'] += len(skipped_by_date)
@@ -259,19 +238,19 @@ class InventionParser(BaseFIPSParser):
         # ШАГ 4: Создание/обновление IPObject
         # =====================================================================
         if to_create and not self.command.dry_run:
-            self.progress.step(f"Создание {len(to_create)} новых записей")
-            with self.progress.task("Создание", total=len(to_create), unit="зап") as pbar:
+            self.stdout.write(f"🔹 Создание {len(to_create)} новых записей")
+            with tqdm(total=len(to_create), desc="Создание", unit="зап") as pbar:
                 stats['created'] = self._bulk_create_objects(to_create, pbar)
 
         if to_update and not self.command.dry_run:
-            self.progress.step(f"Обновление {len(to_update)} записей")
-            with self.progress.task("Обновление", total=len(to_update), unit="зап") as pbar:
+            self.stdout.write(f"🔹 Обновление {len(to_update)} записей")
+            with tqdm(total=len(to_update), desc="Обновление", unit="зап") as pbar:
                 stats['updated'] = self._bulk_update_objects(to_update, existing_objects, pbar)
 
         # =====================================================================
         # ШАГ 5: Получаем актуальный маппинг reg_number -> ip_id
         # =====================================================================
-        self.progress.step("Построение маппинга регистрационных номеров")
+        self.stdout.write("🔹 Построение маппинга регистрационных номеров")
         
         all_reg_numbers = list(set(
             list(existing_objects.keys()) + 
@@ -279,7 +258,7 @@ class InventionParser(BaseFIPSParser):
         ))
         
         reg_to_ip = {}
-        with self.progress.task("Загрузка ID объектов", total=len(all_reg_numbers), unit="зап") as pbar:
+        with tqdm(total=len(all_reg_numbers), desc="Загрузка ID объектов", unit="зап") as pbar:
             batch_size = 1000
             for i in range(0, len(all_reg_numbers), batch_size):
                 batch_nums = all_reg_numbers[i:i+batch_size]
@@ -290,24 +269,24 @@ class InventionParser(BaseFIPSParser):
                     reg_to_ip[obj.registration_number] = obj.id
                 pbar.update(len(batch_nums))
 
-        self.progress.step(f"Загружено ID для {len(reg_to_ip)} объектов")
+        self.stdout.write(f"🔹 Загружено ID для {len(reg_to_ip)} объектов")
 
         # =====================================================================
         # ШАГ 6: Обработка связей через единый DataFrame
         # =====================================================================
         if relations_data and not self.command.dry_run:
-            self.progress.step("Обработка связей")
+            self.stdout.write("🔹 Обработка связей")
             self._process_relations_dataframe(relations_data, reg_to_ip)
 
         gc.collect()
 
         stats['processed'] = len(df) - stats['skipped'] - stats['errors']
 
-        self.progress.success("Парсинг изобретений завершен")
-        self.progress.step(f"Создано: {stats['created']}, Обновлено: {stats['updated']}, "
-                          f"Без изменений: {stats['unchanged']}")
-        self.progress.step(f"Пропущено: {stats['skipped']} (из них по дате: {stats['skipped_by_date']})")
-        self.progress.step(f"Ошибок: {stats['errors']}")
+        self.stdout.write(self.style.SUCCESS("\n✅ Парсинг изобретений завершен"))
+        self.stdout.write(f"   Создано: {stats['created']}, Обновлено: {stats['updated']}, "
+                         f"Без изменений: {stats['unchanged']}")
+        self.stdout.write(f"   Пропущено: {stats['skipped']} (из них по дате: {stats['skipped_by_date']})")
+        self.stdout.write(f"   Ошибок: {stats['errors']}")
 
         return stats
 
@@ -321,9 +300,6 @@ class InventionParser(BaseFIPSParser):
             IPObject.objects.bulk_create(create_objects, batch_size=batch_size)
             created_count += len(batch)
             pbar.update(len(batch))
-            
-            if created_count % 50000 == 0:
-                self.progress.step(f"Создано {created_count} записей")
 
         return created_count
 
@@ -345,30 +321,27 @@ class InventionParser(BaseFIPSParser):
                         obj.save(update_fields=update_fields)
                         updated_count += 1
             pbar.update(len(batch))
-            
-            if updated_count % 50000 == 0:
-                self.progress.step(f"Обновлено {updated_count} записей")
 
         return updated_count
 
     def _process_relations_dataframe(self, relations_data: List[Dict], reg_to_ip: Dict):
         """Обработка всех связей через единый DataFrame"""
         if not relations_data:
-            self.progress.step("Нет данных для обработки связей")
+            self.stdout.write("   Нет данных для обработки связей")
             return
 
-        self.progress.step("Создание DataFrame связей")
+        self.stdout.write("   Создание DataFrame связей")
         df_relations = pd.DataFrame(relations_data)
         
-        self.progress.step(f"Всего записей связей: {len(df_relations)}")
-        self.progress.step(f"Уникальных регистрационных номеров: {df_relations['reg_number'].nunique()}")
+        self.stdout.write(f"   Всего записей связей: {len(df_relations)}")
+        self.stdout.write(f"   Уникальных регистрационных номеров: {df_relations['reg_number'].nunique()}")
 
-        self.progress.step("Добавление ID объектов")
+        self.stdout.write("   Добавление ID объектов")
         df_relations['ip_id'] = df_relations['reg_number'].map(reg_to_ip)
 
         missing_ip = df_relations['ip_id'].isna().sum()
         if missing_ip > 0:
-            self.progress.warning(f"Пропущено {missing_ip} связей с отсутствующими ID объектов")
+            self.stdout.write(self.style.WARNING(f"   ⚠️ Пропущено {missing_ip} связей с отсутствующими ID объектов"))
             df_relations = df_relations.dropna(subset=['ip_id']).copy()
         
         df_relations['ip_id'] = df_relations['ip_id'].astype(int)
@@ -376,13 +349,13 @@ class InventionParser(BaseFIPSParser):
         # =====================================================================
         # ШАГ 6.1: Определение типов для правообладателей
         # =====================================================================
-        self.progress.step("Определение типов сущностей через Natasha")
+        self.stdout.write("   Определение типов сущностей через Natasha")
         
         unique_entities = df_relations[['entity_name', 'entity_type']].drop_duplicates()
         holders_to_check = unique_entities[unique_entities['entity_type'].isna()]['entity_name'].tolist()
 
         if holders_to_check:
-            self.progress.step(f"Определение типов для {len(holders_to_check)} правообладателей")
+            self.stdout.write(f"   Определение типов для {len(holders_to_check)} правообладателей")
             entity_type_map = self.type_detector.detect_type_batch(holders_to_check)
 
             mask = df_relations['entity_type'].isna()
@@ -390,8 +363,8 @@ class InventionParser(BaseFIPSParser):
                 df_relations.loc[mask, 'entity_name'].map(entity_type_map)
 
         type_stats = df_relations['entity_type'].value_counts().to_dict()
-        self.progress.step(f"Распределение типов: люди={type_stats.get('person', 0)}, "
-                          f"организации={type_stats.get('organization', 0)}")
+        self.stdout.write(f"   Распределение типов: люди={type_stats.get('person', 0)}, "
+                         f"организации={type_stats.get('organization', 0)}")
 
         # =====================================================================
         # ШАГ 6.2: Группировка по сущностям
@@ -403,38 +376,33 @@ class InventionParser(BaseFIPSParser):
 
         person_map = {}
         if not persons_df.empty:
-            self.progress.step(f"Обработка {len(persons_df)} уникальных людей")
-            with self.progress.task("Создание/поиск людей", 
-                                   total=len(persons_df), 
-                                   unit="чел") as pbar:
+            self.stdout.write(f"   Обработка {len(persons_df)} уникальных людей")
+            with tqdm(total=len(persons_df), desc="   Создание/поиск людей", unit="чел") as pbar:
                 person_map = self._create_persons_from_dataframe(persons_df, pbar)
 
         org_map = {}
         if not orgs_df.empty:
-            self.progress.step(f"Обработка {len(orgs_df)} уникальных организаций")
-            with self.progress.task("Создание/поиск организаций", 
-                                   total=len(orgs_df), 
-                                   unit="орг") as pbar:
+            self.stdout.write(f"   Обработка {len(orgs_df)} уникальных организаций")
+            with tqdm(total=len(orgs_df), desc="   Создание/поиск организаций", unit="орг") as pbar:
                 org_map = self._create_organizations_from_dataframe(orgs_df, pbar)
 
         # =====================================================================
         # ШАГ 6.3: Подготовка связей
         # =====================================================================
-        self.progress.step("Подготовка связей для вставки в БД")
+        self.stdout.write("   Подготовка связей для вставки в БД")
         
         authors_df = df_relations[df_relations['relation_type'] == 'author'].copy()
         holders_df = df_relations[df_relations['relation_type'] == 'holder'].copy()
 
         author_relations = []
         if not authors_df.empty:
-            # ИСПРАВЛЕНО: используем ceo_id вместо id
             authors_df['person_id'] = authors_df['entity_name'].map(
                 {name: p.ceo_id for name, p in person_map.items()}
             )
             authors_unique = authors_df[['ip_id', 'person_id']].drop_duplicates()
             author_relations = [(row['ip_id'], row['person_id']) 
                                for _, row in authors_unique.iterrows()]
-            self.progress.step(f"Подготовлено {len(author_relations)} уникальных связей авторов")
+            self.stdout.write(f"   Подготовлено {len(author_relations)} уникальных связей авторов")
 
         holder_person_relations = []
         holder_org_relations = []
@@ -442,69 +410,55 @@ class InventionParser(BaseFIPSParser):
         if not holders_df.empty:
             holders_persons = holders_df[holders_df['entity_type'] == 'person'].copy()
             if not holders_persons.empty:
-                # ИСПРАВЛЕНО: используем ceo_id вместо id
                 holders_persons['person_id'] = holders_persons['entity_name'].map(
                     {name: p.ceo_id for name, p in person_map.items()}
                 )
                 holders_persons_unique = holders_persons[['ip_id', 'person_id']].drop_duplicates()
                 holder_person_relations = [(row['ip_id'], row['person_id']) 
                                           for _, row in holders_persons_unique.iterrows()]
-                self.progress.step(f"Подготовлено {len(holder_person_relations)} связей правообладателей-людей")
+                self.stdout.write(f"   Подготовлено {len(holder_person_relations)} связей правообладателей-людей")
 
             holders_orgs = holders_df[holders_df['entity_type'] == 'organization'].copy()
             if not holders_orgs.empty:
-                # ИСПРАВЛЕНО: используем organization_id вместо id
                 holders_orgs['org_id'] = holders_orgs['entity_name'].map(
                     {name: o.organization_id for name, o in org_map.items()}
                 )
                 holders_orgs_unique = holders_orgs[['ip_id', 'org_id']].drop_duplicates()
                 holder_org_relations = [(row['ip_id'], row['org_id']) 
                                        for _, row in holders_orgs_unique.iterrows()]
-                self.progress.step(f"Подготовлено {len(holder_org_relations)} связей правообладателей-организаций")
+                self.stdout.write(f"   Подготовлено {len(holder_org_relations)} связей правообладателей-организаций")
 
         # =====================================================================
         # ШАГ 6.4: Массовое создание связей
         # =====================================================================
         if author_relations:
-            self.progress.step("Создание связей авторов")
+            self.stdout.write("   Создание связей авторов")
             ip_ids = list(set(ip_id for ip_id, _ in author_relations))
-            with self.progress.task("Удаление старых связей авторов", 
-                                   total=len(ip_ids), 
-                                   unit="ip") as pbar:
+            with tqdm(total=len(ip_ids), desc="   Удаление старых связей авторов", unit="ip") as pbar:
                 self._delete_author_relations(ip_ids, pbar)
             
-            with self.progress.task("Создание новых связей авторов", 
-                                   total=len(author_relations), 
-                                   unit="св") as pbar:
+            with tqdm(total=len(author_relations), desc="   Создание новых связей авторов", unit="св") as pbar:
                 self._create_author_relations(author_relations, pbar)
 
         if holder_person_relations:
-            self.progress.step("Создание связей правообладателей (люди)")
+            self.stdout.write("   Создание связей правообладателей (люди)")
             ip_ids = list(set(ip_id for ip_id, _ in holder_person_relations))
-            with self.progress.task("Удаление старых связей", 
-                                   total=len(ip_ids), 
-                                   unit="ip") as pbar:
+            with tqdm(total=len(ip_ids), desc="   Удаление старых связей", unit="ip") as pbar:
                 self._delete_holder_person_relations(ip_ids, pbar)
             
-            with self.progress.task("Создание новых связей", 
-                                   total=len(holder_person_relations), 
-                                   unit="св") as pbar:
+            with tqdm(total=len(holder_person_relations), desc="   Создание новых связей", unit="св") as pbar:
                 self._create_holder_person_relations(holder_person_relations, pbar)
 
         if holder_org_relations:
-            self.progress.step("Создание связей правообладателей (организации)")
+            self.stdout.write("   Создание связей правообладателей (организации)")
             ip_ids = list(set(ip_id for ip_id, _ in holder_org_relations))
-            with self.progress.task("Удаление старых связей", 
-                                   total=len(ip_ids), 
-                                   unit="ip") as pbar:
+            with tqdm(total=len(ip_ids), desc="   Удаление старых связей", unit="ip") as pbar:
                 self._delete_holder_org_relations(ip_ids, pbar)
             
-            with self.progress.task("Создание новых связей", 
-                                   total=len(holder_org_relations), 
-                                   unit="св") as pbar:
+            with tqdm(total=len(holder_org_relations), desc="   Создание новых связей", unit="св") as pbar:
                 self._create_holder_org_relations(holder_org_relations, pbar)
 
-        self.progress.success("Обработка всех связей завершена")
+        self.stdout.write(self.style.SUCCESS("   ✅ Обработка всех связей завершена"))
 
     def _create_persons_from_dataframe(self, persons_df: pd.DataFrame, pbar) -> Dict:
         """Создание людей из DataFrame"""
@@ -524,7 +478,6 @@ class InventionParser(BaseFIPSParser):
         # Строим запрос для поиска существующих
         if name_parts:
             query = models.Q()
-            name_to_query_key = {}  # Для обратного маппинга
             
             for name, (last, first, middle) in name_parts.items():
                 if middle:
@@ -533,11 +486,8 @@ class InventionParser(BaseFIPSParser):
                     q = models.Q(last_name=last, first_name=first) & \
                         (models.Q(middle_name='') | models.Q(middle_name__isnull=True))
                 query |= q
-                # Сохраняем соответствие для быстрого поиска
-                name_to_query_key[name] = (last, first, middle)
             
             # Ищем всех существующих людей одним запросом
-            # ИСПРАВЛЕНО: используем ceo_id вместо id
             for person in Person.objects.filter(query).only('ceo_id', 'last_name', 'first_name', 'middle_name', 'ceo'):
                 # Проверяем каждое имя
                 for name, (last, first, middle) in name_parts.items():
@@ -589,9 +539,6 @@ class InventionParser(BaseFIPSParser):
                     self.person_cache[name] = person
                 
                 pbar.update(1)
-                
-                if pbar.n % 50000 == 0:
-                    self.progress.step(f"Обработано {pbar.n} людей")
             
             if people_to_create:
                 for batch in batch_iterator(people_to_create, 500):
@@ -639,9 +586,6 @@ class InventionParser(BaseFIPSParser):
                 orgs_to_create.append(org)
                 
                 pbar.update(1)
-                
-                if pbar.n % 10000 == 0:
-                    self.progress.step(f"Обработано {pbar.n} организаций")
             
             if orgs_to_create:
                 for batch in batch_iterator(orgs_to_create, 500):

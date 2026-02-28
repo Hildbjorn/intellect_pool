@@ -9,7 +9,7 @@ from .integrated_circuit import IntegratedCircuitTopologyParser
 from .computer_program import ComputerProgramParser
 from .database import DatabaseParser
 
-# Импортируем процессоры из подпакета processors (правильно: .processors)
+# Импортируем процессоры из подпакета processors
 from .processors import (
     RussianTextProcessor,
     OrganizationNormalizer,

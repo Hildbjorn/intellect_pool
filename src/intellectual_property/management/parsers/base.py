@@ -25,7 +25,7 @@ from .processors import (
 )
 
 # ИСПРАВЛЕНО: импортируем утилиты из родительского пакета (..utils)
-from ..utils.progress import ProgressManager, batch_iterator
+from ..utils.progress import batch_iterator
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +37,6 @@ class BaseFIPSParser:
         self.command = command
         self.stdout = command.stdout
         self.style = command.style
-
-        # Инициализация менеджера прогресса
-        self.progress = ProgressManager(file=self.stdout)
 
         # Инициализация процессоров
         self.processor = RussianTextProcessor()
@@ -132,7 +129,7 @@ class BaseFIPSParser:
             return None
 
         except Exception as e:
-            self.progress.warning(f"Ошибка поиска страны {code}: {e}")
+            self.stdout.write(self.style.WARNING(f"  Ошибка поиска страны {code}: {e}"))
             return None
 
     def parse_authors(self, authors_str):
@@ -259,7 +256,7 @@ class BaseFIPSParser:
             self.person_cache[cache_key] = person
             return person
         except Exception as e:
-            self.progress.warning(f"Ошибка создания Person: {e}")
+            self.stdout.write(self.style.WARNING(f"  Ошибка создания Person: {e}"))
             return None
 
     def find_or_create_person_from_name(self, full_name):
@@ -405,5 +402,5 @@ class BaseFIPSParser:
             self.organization_cache[org_name] = org
             return org
         except Exception as e:
-            self.progress.warning(f"Ошибка создания Organization: {e}")
+            self.stdout.write(self.style.WARNING(f"  Ошибка создания Organization: {e}"))
             return None
