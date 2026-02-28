@@ -107,11 +107,10 @@ class InventionParser(BaseFIPSParser):
         batch_size = 500
         reg_numbers = list(reg_num_to_row.keys())
         
-        # Прогресс-бар с редким обновлением
+        # Прогресс-бар с редким обновлением (убрали mininterval)
         with self.progress.task("Загрузка пачками", 
                                total=len(reg_numbers), 
-                               unit="зап",
-                               mininterval=2.0) as pbar:  # Обновление раз в 2 секунды
+                               unit="зап") as pbar:
             
             for i in range(0, len(reg_numbers), batch_size):
                 batch_numbers = reg_numbers[i:i+batch_size]
@@ -139,11 +138,10 @@ class InventionParser(BaseFIPSParser):
 
         relations_data = []
         
-        # Прогресс-бар с редким обновлением
+        # Прогресс-бар с редким обновлением (убрали mininterval)
         with self.progress.task("Подготовка данных IPObject", 
                                total=len(reg_num_to_row), 
-                               unit="зап",
-                               mininterval=2.0) as pbar:
+                               unit="зап") as pbar:
 
             for reg_num, row in reg_num_to_row.items():
                 try:
@@ -254,12 +252,12 @@ class InventionParser(BaseFIPSParser):
         # =====================================================================
         if to_create and not self.command.dry_run:
             self.progress.step(f"Создание {len(to_create)} новых записей")
-            with self.progress.task("Создание", total=len(to_create), unit="зап", mininterval=2.0) as pbar:
+            with self.progress.task("Создание", total=len(to_create), unit="зап") as pbar:
                 stats['created'] = self._bulk_create_objects(to_create, pbar)
 
         if to_update and not self.command.dry_run:
             self.progress.step(f"Обновление {len(to_update)} записей")
-            with self.progress.task("Обновление", total=len(to_update), unit="зап", mininterval=2.0) as pbar:
+            with self.progress.task("Обновление", total=len(to_update), unit="зап") as pbar:
                 stats['updated'] = self._bulk_update_objects(to_update, existing_objects, pbar)
 
         # =====================================================================
@@ -273,7 +271,7 @@ class InventionParser(BaseFIPSParser):
         ))
         
         reg_to_ip = {}
-        with self.progress.task("Загрузка ID объектов", total=len(all_reg_numbers), unit="зап", mininterval=2.0) as pbar:
+        with self.progress.task("Загрузка ID объектов", total=len(all_reg_numbers), unit="зап") as pbar:
             batch_size = 1000
             for i in range(0, len(all_reg_numbers), batch_size):
                 batch_nums = all_reg_numbers[i:i+batch_size]
@@ -400,8 +398,7 @@ class InventionParser(BaseFIPSParser):
             self.progress.step(f"Обработка {len(persons_df)} уникальных людей")
             with self.progress.task("Создание/поиск людей", 
                                    total=len(persons_df), 
-                                   unit="чел",
-                                   mininterval=5.0) as pbar:  # Очень редкое обновление
+                                   unit="чел") as pbar:
                 person_map = self._create_persons_from_dataframe(persons_df, pbar)
 
         org_map = {}
@@ -409,8 +406,7 @@ class InventionParser(BaseFIPSParser):
             self.progress.step(f"Обработка {len(orgs_df)} уникальных организаций")
             with self.progress.task("Создание/поиск организаций", 
                                    total=len(orgs_df), 
-                                   unit="орг",
-                                   mininterval=5.0) as pbar:
+                                   unit="орг") as pbar:
                 org_map = self._create_organizations_from_dataframe(orgs_df, pbar)
 
         # =====================================================================
@@ -466,14 +462,12 @@ class InventionParser(BaseFIPSParser):
             ip_ids = list(set(ip_id for ip_id, _ in author_relations))
             with self.progress.task("Удаление старых связей авторов", 
                                    total=len(ip_ids), 
-                                   unit="ip",
-                                   mininterval=2.0) as pbar:
+                                   unit="ip") as pbar:
                 self._delete_author_relations(ip_ids, pbar)
             
             with self.progress.task("Создание новых связей авторов", 
                                    total=len(author_relations), 
-                                   unit="св",
-                                   mininterval=2.0) as pbar:
+                                   unit="св") as pbar:
                 self._create_author_relations(author_relations, pbar)
 
         if holder_person_relations:
@@ -481,14 +475,12 @@ class InventionParser(BaseFIPSParser):
             ip_ids = list(set(ip_id for ip_id, _ in holder_person_relations))
             with self.progress.task("Удаление старых связей", 
                                    total=len(ip_ids), 
-                                   unit="ip",
-                                   mininterval=2.0) as pbar:
+                                   unit="ip") as pbar:
                 self._delete_holder_person_relations(ip_ids, pbar)
             
             with self.progress.task("Создание новых связей", 
                                    total=len(holder_person_relations), 
-                                   unit="св",
-                                   mininterval=2.0) as pbar:
+                                   unit="св") as pbar:
                 self._create_holder_person_relations(holder_person_relations, pbar)
 
         if holder_org_relations:
@@ -496,14 +488,12 @@ class InventionParser(BaseFIPSParser):
             ip_ids = list(set(ip_id for ip_id, _ in holder_org_relations))
             with self.progress.task("Удаление старых связей", 
                                    total=len(ip_ids), 
-                                   unit="ip",
-                                   mininterval=2.0) as pbar:
+                                   unit="ip") as pbar:
                 self._delete_holder_org_relations(ip_ids, pbar)
             
             with self.progress.task("Создание новых связей", 
                                    total=len(holder_org_relations), 
-                                   unit="св",
-                                   mininterval=2.0) as pbar:
+                                   unit="св") as pbar:
                 self._create_holder_org_relations(holder_org_relations, pbar)
 
         self.progress.success("Обработка всех связей завершена")
