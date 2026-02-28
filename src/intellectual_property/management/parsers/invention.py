@@ -473,14 +473,249 @@ class InventionParser(BaseFIPSParser):
         self.stdout.write(self.style.SUCCESS("   ✅ Обработка всех связей завершена"))
 
     def _create_persons_bulk(self, persons_df: pd.DataFrame) -> Dict:
-        """Пакетное создание людей из DataFrame"""
-        # ... (код метода остается без изменений)
-        pass
+        """
+        Пакетное создание людей из DataFrame с индикацией прогресса
+        Всегда возвращает словарь (даже пустой)
+        """
+        person_map = {}
+        
+        # Если DataFrame пустой, сразу возвращаем пустой словарь
+        if persons_df.empty:
+            self.stdout.write("      Нет людей для обработки")
+            return person_map
+        
+        all_names = persons_df['entity_name'].tolist()
+        total_names = len(all_names)
+        
+        self.stdout.write(f"      Всего уникальных людей для обработки: {total_names}")
+        
+        # ШАГ 1: Поиск существующих людей (пачками по 100 имен)
+        self.stdout.write(f"      Поиск существующих людей в БД...")
+        
+        name_to_parts = {}
+        for name in all_names:
+            if pd.isna(name) or not name:
+                continue
+            parts = name.split()
+            if len(parts) >= 2:
+                last = parts[0]
+                first = parts[1]
+                middle = parts[2] if len(parts) > 2 else ''
+                name_to_parts[name] = (last, first, middle)
+        
+        existing_persons = {}
+        found_count = 0
+        batch_size = 100
+        all_names_list = list(name_to_parts.keys())
+        
+        for i in range(0, len(all_names_list), batch_size):
+            batch_names = all_names_list[i:i+batch_size]
+            
+            name_conditions = models.Q()
+            batch_name_to_parts = {}
+            
+            for name in batch_names:
+                last, first, middle = name_to_parts[name]
+                batch_name_to_parts[name] = (last, first, middle)
+                
+                if middle:
+                    name_conditions |= models.Q(
+                        last_name=last, 
+                        first_name=first, 
+                        middle_name=middle
+                    )
+                else:
+                    name_conditions |= models.Q(
+                        last_name=last, 
+                        first_name=first
+                    ) & (models.Q(middle_name='') | models.Q(middle_name__isnull=True))
+            
+            for person in Person.objects.filter(name_conditions).only(
+                'ceo_id', 'last_name', 'first_name', 'middle_name', 'ceo'
+            ):
+                for name, (last, first, middle) in batch_name_to_parts.items():
+                    if (person.last_name == last and 
+                        person.first_name == first and 
+                        (not middle or person.middle_name == middle)):
+                        existing_persons[name] = person
+                        self.person_cache[name] = person
+                        found_count += 1
+                        break
+            
+            if (i + len(batch_names)) % 500 == 0 or (i + len(batch_names)) >= len(all_names_list):
+                self.stdout.write(f"         Обработано {i + len(batch_names)}/{len(all_names_list)} имен")
+        
+        self.stdout.write(f"      Найдено существующих: {found_count}")
+
+        new_names = [name for name in all_names if name not in existing_persons]
+        new_count = len(new_names)
+        
+        self.stdout.write(f"      Новых людей для создания: {new_count}")
+        
+        if new_names:
+            self.stdout.write(f"      Подготовка данных для создания...")
+            
+            max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
+            existing_slugs = set(Person.objects.values_list('slug', flat=True)[:100000])
+            
+            people_to_create = []
+            
+            for name in new_names:
+                if pd.isna(name) or not name:
+                    continue
+                parts = name.split()
+                if len(parts) >= 2:
+                    last_name = parts[0]
+                    first_name = parts[1]
+                    middle_name = parts[2] if len(parts) > 2 else ''
+                    
+                    name_parts_list = [last_name, first_name]
+                    if middle_name:
+                        name_parts_list.append(middle_name)
+                    
+                    base_slug = slugify(' '.join(name_parts_list)) or 'person'
+                    unique_slug = base_slug
+                    counter = 1
+                    while unique_slug in existing_slugs:
+                        unique_slug = f"{base_slug}-{counter}"
+                        counter += 1
+                    existing_slugs.add(unique_slug)
+                    
+                    person = Person(
+                        ceo_id=max_id + len(people_to_create) + 1,
+                        ceo=name,
+                        last_name=last_name,
+                        first_name=first_name,
+                        middle_name=middle_name or '',
+                        slug=unique_slug
+                    )
+                    people_to_create.append(person)
+            
+            if people_to_create:
+                self.stdout.write(f"      Создание людей пачками по 500...")
+                
+                batch_size = 500
+                created_count = 0
+                
+                for batch in batch_iterator(people_to_create, batch_size):
+                    Person.objects.bulk_create(batch, batch_size=batch_size)
+                    created_count += len(batch)
+                    
+                    if created_count % 5000 == 0 or created_count == new_count:
+                        percent = (created_count / new_count) * 100
+                        self.stdout.write(f"         Создано {created_count}/{new_count} ({percent:.1f}%)")
+                
+                self.stdout.write(f"      Получение созданных людей для маппинга...")
+                
+                created_names = [p.ceo for p in people_to_create]
+                for batch in batch_iterator(created_names, 1000):
+                    for person in Person.objects.filter(ceo__in=batch):
+                        person_map[person.ceo] = person
+                        self.person_cache[person.ceo] = person
+
+        # Добавляем существующих людей в маппинг
+        person_map.update(existing_persons)
+        
+        self.stdout.write(f"      ✅ Обработано людей: {len(person_map)}")
+        
+        return person_map
 
     def _create_organizations_bulk(self, orgs_df: pd.DataFrame) -> Dict:
-        """Пакетное создание организаций из DataFrame"""
-        # ... (код метода остается без изменений)
-        pass
+        """
+        Пакетное создание организаций из DataFrame с индикацией прогресса
+        Всегда возвращает словарь (даже пустой)
+        """
+        org_map = {}
+        
+        # Если DataFrame пустой, сразу возвращаем пустой словарь
+        if orgs_df.empty:
+            self.stdout.write("      Нет организаций для обработки")
+            return org_map
+        
+        all_names = orgs_df['entity_name'].tolist()
+        total_names = len(all_names)
+        
+        self.stdout.write(f"      Всего уникальных организаций для обработки: {total_names}")
+        
+        # ШАГ 1: Поиск существующих организаций (пачками)
+        self.stdout.write(f"      Поиск существующих организаций в БД...")
+        
+        existing_orgs = {}
+        batch_size = 100
+        
+        for i in range(0, len(all_names), batch_size):
+            batch_names = all_names[i:i+batch_size]
+            
+            for org in Organization.objects.filter(name__in=batch_names).only('organization_id', 'name'):
+                existing_orgs[org.name] = org
+                self.organization_cache[org.name] = org
+            
+            if (i + len(batch_names)) % 500 == 0 or (i + len(batch_names)) >= len(all_names):
+                self.stdout.write(f"         Обработано {i + len(batch_names)}/{len(all_names)} названий")
+        
+        self.stdout.write(f"      Найдено существующих: {len(existing_orgs)}")
+
+        new_names = [name for name in all_names if name not in existing_orgs]
+        new_count = len(new_names)
+        
+        self.stdout.write(f"      Новых организаций для создания: {new_count}")
+        
+        if new_names:
+            self.stdout.write(f"      Подготовка данных для создания...")
+            
+            max_id = Organization.objects.aggregate(models.Max('organization_id'))['organization_id__max'] or 0
+            existing_slugs = set(Organization.objects.values_list('slug', flat=True)[:50000])
+            
+            orgs_to_create = []
+            
+            for name in new_names:
+                if pd.isna(name) or not name:
+                    continue
+                base_slug = slugify(name[:50]) or 'organization'
+                unique_slug = base_slug
+                counter = 1
+                while unique_slug in existing_slugs:
+                    unique_slug = f"{base_slug}-{counter}"
+                    counter += 1
+                existing_slugs.add(unique_slug)
+                
+                org = Organization(
+                    organization_id=max_id + len(orgs_to_create) + 1,
+                    name=name,
+                    full_name=name,
+                    short_name=name[:500] if len(name) > 500 else name,
+                    slug=unique_slug,
+                    register_opk=False,
+                    strategic=False,
+                )
+                orgs_to_create.append(org)
+            
+            if orgs_to_create:
+                self.stdout.write(f"      Создание организаций пачками по 500...")
+                
+                batch_size = 500
+                created_count = 0
+                
+                for batch in batch_iterator(orgs_to_create, batch_size):
+                    Organization.objects.bulk_create(batch, batch_size=batch_size)
+                    created_count += len(batch)
+                    
+                    if created_count % 5000 == 0 or created_count == new_count:
+                        percent = (created_count / new_count) * 100
+                        self.stdout.write(f"         Создано {created_count}/{new_count} ({percent:.1f}%)")
+                
+                self.stdout.write(f"      Получение созданных организаций для маппинга...")
+                
+                created_names = [o.name for o in orgs_to_create]
+                for batch in batch_iterator(created_names, 1000):
+                    for org in Organization.objects.filter(name__in=batch):
+                        org_map[org.name] = org
+                        self.organization_cache[org.name] = org
+
+        org_map.update(existing_orgs)
+        self.stdout.write(f"      ✅ Обработано организаций: {len(org_map)}")
+        
+        return org_map
 
     def _delete_author_relations(self, ip_ids: List[int], pbar):
         """Удаление связей авторов"""
