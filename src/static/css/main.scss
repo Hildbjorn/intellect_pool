@@ -889,6 +889,412 @@ main {
     }
 }
 
+// =============================================
+// СТИЛИ ДЛЯ ТАБЛИЦЫ СПИСКА РИД
+// =============================================
+
+// Основной контейнер таблицы
+.ip-table-container {
+    background-color: $white;
+    border-radius: 0.75rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    overflow: hidden;
+
+    .table-responsive {
+        border-radius: 0.75rem;
+        scrollbar-width: thin;
+        scrollbar-color: $gray-400 $gray-200;
+
+        &::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        &::-webkit-scrollbar-track {
+            background: $gray-200;
+            border-radius: 4px;
+        }
+
+        &::-webkit-scrollbar-thumb {
+            background: $gray-400;
+            border-radius: 4px;
+
+            &:hover {
+                background: $gray-600;
+            }
+        }
+    }
+}
+
+// Стили таблицы
+#ipTable {
+    min-width: 2000px; // Горизонтальный скролл для множества колонок
+    margin-bottom: 0;
+    font-size: 0.85rem;
+
+    thead {
+        th {
+            position: sticky;
+            top: 0;
+            background-color: $gray-800;
+            color: $white;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+            padding: 0.75rem 0.5rem;
+            white-space: nowrap;
+            border-bottom: 2px solid $gray-700;
+            z-index: 10;
+
+            &[data-column] {
+                cursor: pointer;
+
+                &:hover {
+                    background-color: $gray-700;
+                }
+
+                &::after {
+                    content: "↕️";
+                    margin-left: 0.5rem;
+                    opacity: 0.5;
+                    font-size: 0.7rem;
+                }
+            }
+        }
+    }
+
+    tbody {
+        td {
+            padding: 0.5rem;
+            vertical-align: middle;
+            white-space: nowrap;
+            border-bottom: 1px solid $gray-200;
+            transition: background-color 0.2s ease;
+
+            // Компактные бейджи
+            .badge {
+                font-weight: normal;
+                font-size: 0.75rem;
+                padding: 0.35rem 0.65rem;
+
+                &.bg-light {
+                    background-color: $gray-100 !important;
+                    border: 1px solid $gray-300;
+                    color: $gray-700;
+                }
+
+                &.bg-success {
+                    background-color: $success !important;
+                }
+
+                &.bg-secondary {
+                    background-color: $gray-500 !important;
+                }
+            }
+
+            // Иконки
+            i {
+                font-size: 0.9rem;
+                transition: all 0.2s ease;
+
+                &[data-bs-toggle="popover"] {
+                    cursor: help;
+
+                    &:hover {
+                        transform: scale(1.1);
+                        opacity: 0.8;
+                    }
+                }
+
+                &.bi-building {
+                    color: $primary;
+                }
+
+                &.bi-person {
+                    color: $success;
+                }
+
+                &.bi-pencil-square {
+                    color: $gray-600;
+                }
+
+                &.bi-code-square {
+                    color: $primary;
+                }
+
+                &.bi-database {
+                    color: $warning;
+                }
+
+                &.bi-file-text,
+                &.bi-file-earmark-text {
+                    color: $info;
+                }
+
+                &.bi-box-arrow-up-right {
+                    color: $info;
+                    font-size: 0.7rem;
+                }
+            }
+
+            // Ссылки
+            a {
+                color: $link-color;
+                text-decoration: none;
+                transition: color 0.2s ease;
+
+                &:hover {
+                    color: darken($link-color, 15%);
+                    text-decoration: underline;
+
+                    i {
+                        color: darken($info, 15%);
+                    }
+                }
+            }
+
+            // Текст с тултипом
+            [title] {
+                cursor: help;
+                border-bottom: 1px dashed $gray-400;
+            }
+        }
+
+        tr {
+            transition: background-color 0.2s ease;
+
+            &:hover {
+                background-color: rgba($primary, 0.03);
+
+                td {
+                    background-color: transparent;
+                }
+            }
+
+            &:last-child td {
+                border-bottom: none;
+            }
+        }
+    }
+
+    // Скрытые колонки
+    .d-none {
+        display: none !important;
+    }
+}
+
+// Панель выбора колонок
+#columnSelector {
+    .card {
+        border: 1px solid $gray-300;
+        border-radius: 0.5rem;
+        background-color: $gray-100;
+
+        .form-check {
+            padding-left: 1.75rem;
+            margin-bottom: 0.5rem;
+
+            .form-check-input {
+                cursor: pointer;
+
+                &:checked {
+                    background-color: $primary;
+                    border-color: $primary;
+                }
+            }
+
+            .form-check-label {
+                cursor: pointer;
+                font-size: 0.85rem;
+                color: $gray-700;
+
+                &:hover {
+                    color: $primary;
+                }
+            }
+        }
+    }
+}
+
+// Панель фильтров для страницы РИД
+#filter-form {
+
+    .form-control,
+    .form-select {
+        font-size: 0.85rem;
+        padding: 0.375rem 0.75rem;
+        border: 1px solid $gray-300;
+        border-radius: 0.375rem;
+
+        &:focus {
+            border-color: $primary;
+            box-shadow: 0 0 0 0.2rem rgba($primary, 0.25);
+        }
+    }
+
+    label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: $gray-600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.25rem;
+    }
+
+    .btn {
+        font-size: 0.85rem;
+        padding: 0.375rem 1rem;
+
+        i {
+            font-size: 0.9rem;
+        }
+    }
+}
+
+// Статистическая информация
+[data-ip-stats] {
+    font-size: 0.85rem;
+    color: $gray-600;
+
+    i {
+        color: $primary;
+    }
+}
+
+// Пагинация для страницы РИД
+.ip-pagination {
+    .pagination {
+        margin-bottom: 0;
+
+        .page-item {
+            margin: 0 2px;
+
+            .page-link {
+                border-radius: 0.375rem;
+                min-width: 38px;
+                text-align: center;
+                font-size: 0.85rem;
+                padding: 0.375rem 0.75rem;
+                color: $primary;
+                border: 1px solid $gray-300;
+
+                &:hover {
+                    background-color: $primary;
+                    color: $white;
+                    border-color: $primary;
+                }
+            }
+
+            &.active .page-link {
+                background-color: $primary;
+                border-color: $primary;
+                color: $white;
+                font-weight: 600;
+            }
+
+            &.disabled .page-link {
+                color: $gray-400;
+                pointer-events: none;
+            }
+        }
+    }
+}
+
+// Стили для попапов в таблице
+.popover {
+    max-width: 400px;
+    font-size: 0.85rem;
+
+    .popover-header {
+        background-color: $primary;
+        color: $white;
+        font-weight: 600;
+        font-size: 0.9rem;
+        padding: 0.5rem 1rem;
+    }
+
+    .popover-body {
+        padding: 0.75rem 1rem;
+        max-height: 200px;
+        overflow-y: auto;
+        color: $gray-700;
+        line-height: 1.5;
+    }
+}
+
+// Адаптивность для мобильных устройств
+@media (max-width: 768px) {
+    .ip-table-container {
+        border-radius: 0.5rem;
+
+        .table-responsive {
+            border: 1px solid $gray-300;
+        }
+    }
+
+    #ipTable {
+        font-size: 0.8rem;
+
+        thead th {
+            font-size: 0.7rem;
+            padding: 0.5rem 0.25rem;
+        }
+
+        tbody td {
+            padding: 0.5rem 0.25rem;
+
+            .badge {
+                font-size: 0.7rem;
+                padding: 0.25rem 0.5rem;
+            }
+
+            i {
+                font-size: 0.8rem;
+            }
+        }
+    }
+
+    #columnSelector .col-md-3 {
+        flex: 0 0 50%;
+        max-width: 50%;
+    }
+
+    .ip-pagination {
+        .pagination {
+            justify-content: center;
+            flex-wrap: wrap;
+
+            .page-item {
+                margin-bottom: 0.25rem;
+            }
+        }
+    }
+}
+
+// Анимация для появления строк таблицы
+@keyframes rowFadeIn {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+#ipTable tbody tr {
+    animation: rowFadeIn 0.3s ease forwards;
+
+    @for $i from 1 through 50 {
+        &:nth-child(#{$i}) {
+            animation-delay: #{$i * 0.02}s;
+        }
+    }
+}
+
+
 // Стили для бейджей классификации
 .badge {
     &.bg-purple {

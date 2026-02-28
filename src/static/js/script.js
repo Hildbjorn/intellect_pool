@@ -20,12 +20,34 @@ const APP_CONFIG = {
     SCROLL_TOP_THRESHOLD: 300,
     SCROLL_TRANSPARENCY_THRESHOLD: 60,
     DADATA_TOKEN: "96e2dc70ca88016a7ab1e758ecd29864cd1e981d",
-    PHONE_MASK_TEMPLATE: "+7 (___) ___ ____"
+    PHONE_MASK_TEMPLATE: "+7 (___) ___ ____",
+
+    // Конфигурация для таблицы РИД
+    IP_TABLE_CONFIG: {
+        STORAGE_KEY_FILTERS: 'ipFilters',
+        STORAGE_KEY_COLUMNS: 'visibleColumns',
+        POPOVER_OPTIONS: {
+            container: 'body',
+            html: false,
+            placement: 'auto',
+            trigger: 'hover focus'
+        }
+    }
 };
 
 // ----------------------------------------------------------------------------
 // SECTION: Утилиты и вспомогательные функции
 // ----------------------------------------------------------------------------
+
+/**
+ * Проверяет, находится ли пользователь на странице списка РИД
+ * @returns {boolean}
+ */
+const isIPListPage = () => {
+    return document.getElementById('ipTable') !== null ||
+        document.querySelector('[data-ip-table]') !== null ||
+        window.location.pathname.includes('/intellectual_property/');
+};
 
 /**
  * Проверяет, является ли экран маленьким (мобильным/планшетным)
@@ -95,6 +117,168 @@ const showToast = (message, type = 'success', duration = 3000) => {
 };
 
 // ----------------------------------------------------------------------------
+// SECTION: Функционал таблицы РИД
+// ----------------------------------------------------------------------------
+
+/**
+ * Инициализация поповеров для таблицы РИД
+ */
+const initializeIPTablePopovers = () => {
+    if (!isIPListPage()) return;
+
+    const popoverElements = document.querySelectorAll('#ipTable [data-bs-toggle="popover"]');
+    popoverElements.forEach(el => {
+        new bootstrap.Popover(el, APP_CONFIG.IP_TABLE_CONFIG.POPOVER_OPTIONS);
+    });
+};
+
+/**
+ * Сохранение состояния фильтров РИД в localStorage
+ */
+const setupIPFiltersStorage = () => {
+    if (!isIPListPage()) return;
+
+    const filterForm = document.getElementById('filter-form');
+    if (!filterForm) return;
+
+    // Восстановление фильтров при загрузке
+    const savedFilters = localStorage.getItem(APP_CONFIG.IP_TABLE_CONFIG.STORAGE_KEY_FILTERS);
+    if (savedFilters) {
+        try {
+            const filters = JSON.parse(savedFilters);
+            Object.keys(filters).forEach(key => {
+                const input = filterForm.querySelector(`[name="${key}"]`);
+                if (input) {
+                    input.value = filters[key];
+                    // Триггерим событие change для select и radio
+                    if (input.tagName === 'SELECT' || input.type === 'radio' || input.type === 'checkbox') {
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+            });
+        } catch (error) {
+            console.warn('Ошибка при восстановлении фильтров:', error);
+        }
+    }
+
+    // Сохранение фильтров при отправке
+    filterForm.addEventListener('submit', function () {
+        const formData = new FormData(filterForm);
+        const filters = {};
+        formData.forEach((value, key) => {
+            if (value) filters[key] = value;
+        });
+        localStorage.setItem(APP_CONFIG.IP_TABLE_CONFIG.STORAGE_KEY_FILTERS, JSON.stringify(filters));
+    });
+
+    // Кнопка сброса очищает сохраненные фильтры
+    const resetBtn = filterForm.querySelector('a[href="?"]');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', (e) => {
+            localStorage.removeItem(APP_CONFIG.IP_TABLE_CONFIG.STORAGE_KEY_FILTERS);
+        });
+    }
+};
+
+/**
+ * Управление видимостью колонок таблицы РИД
+ */
+const setupIPColumnsVisibility = () => {
+    if (!isIPListPage()) return;
+
+    const columnToggle = document.getElementById('columnToggle');
+    if (!columnToggle) return;
+
+    // Функция переключения колонки
+    const toggleColumn = (columnName, show) => {
+        const selector = `th[data-column="${columnName}"], td[data-column="${columnName}"]`;
+        document.querySelectorAll(selector).forEach(el => {
+            if (show) {
+                el.classList.remove('d-none');
+            } else {
+                el.classList.add('d-none');
+            }
+        });
+    };
+
+    // Загрузка сохраненных настроек
+    const savedColumns = localStorage.getItem(APP_CONFIG.IP_TABLE_CONFIG.STORAGE_KEY_COLUMNS);
+    if (savedColumns) {
+        try {
+            const visibleColumns = JSON.parse(savedColumns);
+            document.querySelectorAll('th[data-column]').forEach(th => {
+                const column = th.dataset.column;
+                if (visibleColumns[column] === false) {
+                    toggleColumn(column, false);
+                    const checkbox = columnToggle.querySelector(`input[value="${column}"]`);
+                    if (checkbox) checkbox.checked = false;
+                }
+            });
+        } catch (error) {
+            console.warn('Ошибка при восстановлении видимости колонок:', error);
+        }
+    }
+
+    // Сохранение при изменении
+    columnToggle.addEventListener('change', function (e) {
+        if (e.target.type === 'checkbox') {
+            const column = e.target.value;
+            toggleColumn(column, e.target.checked);
+
+            // Сохраняем состояние
+            const currentSettings = {};
+            document.querySelectorAll('th[data-column]').forEach(th => {
+                currentSettings[th.dataset.column] = !th.classList.contains('d-none');
+            });
+            localStorage.setItem(APP_CONFIG.IP_TABLE_CONFIG.STORAGE_KEY_COLUMNS, JSON.stringify(currentSettings));
+        }
+    });
+};
+
+/**
+ * Горячие клавиши для страницы РИД
+ */
+const setupIPHotkeys = () => {
+    if (!isIPListPage()) return;
+
+    document.addEventListener('keydown', function (e) {
+        // Ctrl/Cmd + F - фокус на поиск
+        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+            e.preventDefault();
+            const searchInput = document.querySelector('[name="name"]');
+            if (searchInput) {
+                searchInput.focus();
+                searchInput.select();
+            }
+        }
+
+        // Escape - сброс фильтров
+        if (e.key === 'Escape') {
+            const resetBtn = document.querySelector('a[href="?"]');
+            if (resetBtn && document.activeElement?.tagName !== 'INPUT') {
+                resetBtn.click();
+            }
+        }
+    });
+};
+
+/**
+ * Обновление статистики таблицы РИД (количество записей и т.д.)
+ */
+const updateIPTableStats = () => {
+    if (!isIPListPage()) return;
+
+    const table = document.getElementById('ipTable');
+    if (!table) return;
+
+    const rowCount = table.querySelectorAll('tbody tr').length;
+    const statsElement = document.querySelector('[data-ip-stats]');
+    if (statsElement) {
+        statsElement.textContent = `Записей: ${rowCount}`;
+    }
+};
+
+// ----------------------------------------------------------------------------
 // SECTION: Инициализация сторонних библиотек
 // ----------------------------------------------------------------------------
 
@@ -102,8 +286,8 @@ const showToast = (message, type = 'success', duration = 3000) => {
  * Инициализирует Bootstrap компоненты (popovers, tooltips)
  */
 const initializeBootstrapComponents = () => {
-    // Popovers
-    const popoverElements = document.querySelectorAll('[data-bs-toggle="popover"]');
+    // Popovers (общие)
+    const popoverElements = document.querySelectorAll('[data-bs-toggle="popover"]:not(#ipTable *)');
     popoverElements.forEach(el => new bootstrap.Popover(el));
 
     // Tooltips
@@ -198,23 +382,6 @@ const initializePhoneMask = () => {
         // Сохраняем ссылки на обработчики для возможного удаления
         input._maskHandlers = { handleInput, handleFocus, handleBlur, handleKeyDown };
     });
-};
-
-/**
- * Удаляет маску телефона с элемента (для динамического удаления)
- * @param {HTMLInputElement} input - Поле ввода
- */
-const removePhoneMask = (input) => {
-    if (!input || !input._maskHandlers) return;
-
-    const { handleInput, handleFocus, handleBlur, handleKeyDown } = input._maskHandlers;
-
-    input.removeEventListener("input", handleInput);
-    input.removeEventListener("focus", handleFocus);
-    input.removeEventListener("blur", handleBlur);
-    input.removeEventListener("keydown", handleKeyDown);
-
-    delete input._maskHandlers;
 };
 
 // ----------------------------------------------------------------------------
@@ -340,6 +507,23 @@ const setupRIDNavigation = () => {
         if (!isClickInsideSidebar && !isClickOnMenuBtn && ridNavbar.classList.contains('show')) {
             ridNavbar.classList.remove('show');
         }
+    });
+};
+
+/**
+ * Настраивает кнопку "Наверх"
+ */
+const setupScrollToTopButton = () => {
+    const scrollButton = document.getElementById('scrollToTop');
+    if (!scrollButton) return;
+
+    window.addEventListener('scroll', () => {
+        scrollButton.style.display = window.pageYOffset > APP_CONFIG.SCROLL_TOP_THRESHOLD ? 'block' : 'none';
+    });
+
+    scrollButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 };
 
@@ -491,7 +675,6 @@ const initializeOrganizationAutocomplete = () => {
             email: form.querySelector('[name="email"]'),
             org_type: form.querySelector('[name="org_type"]'),
             activity_status: form.querySelector('[name="activity_status"]'),
-            // ДОБАВЛЯЕМ ЭТИ ПОЛЯ:
             registration_date: form.querySelector('[name="registration_date"]'),
             is_small_business: form.querySelector('[name="is_small_business"]')
         };
@@ -519,7 +702,6 @@ const initializeOrganizationAutocomplete = () => {
 
                 onSelect: (suggestion) => {
                     console.log("Статус:", suggestion.data.state?.status);
-                    console.groupEnd();
 
                     // Сохраняем полные данные в скрытое поле
                     orgDataField.value = JSON.stringify(suggestion);
@@ -837,6 +1019,69 @@ const setupFormSubmitHandlers = () => {
     });
 };
 
+/**
+ * Выравнивает высоту описания проекта
+ */
+const setupProjectDescriptionHeight = () => {
+    const imagePreview = document.getElementById('image_preview');
+    const descriptionCol = document.querySelector('.project_description_col');
+
+    if (!imagePreview || !descriptionCol) return;
+
+    const updateHeight = () => {
+        if (window.innerWidth >= 992) {
+            descriptionCol.style.height = `${imagePreview.offsetHeight}px`;
+        } else {
+            descriptionCol.style.height = '';
+        }
+    };
+
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+};
+
+// ----------------------------------------------------------------------------
+// SECTION: Мок-функции для DaData (если нужны)
+// ----------------------------------------------------------------------------
+
+/**
+ * Инициализирует мок-режим автозаполнения для поля
+ */
+const initializeMockAutocompleteForField = (field, fields, orgDataField) => {
+    // Упрощенная версия для тестирования
+    field.setAttribute('data-mock-enabled', 'true');
+
+    // Добавляем подсказки для тестирования
+    const mockData = [
+        { value: 'ПАО "Газпром"', inn: '7736050003', ogrn: '1027700070518' },
+        { value: 'ПАО "ЛУКОЙЛ"', inn: '7708004767', ogrn: '1027700035769' },
+        { value: 'ПАО "Сбербанк России"', inn: '7707083893', ogrn: '1027700132195' }
+    ];
+
+    // Создаем простой datalist для автозаполнения
+    const datalistId = 'mock-datalist-' + Math.random().toString(36).substr(2, 9);
+    const datalist = document.createElement('datalist');
+    datalist.id = datalistId;
+
+    mockData.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.value;
+        datalist.appendChild(option);
+    });
+
+    field.parentNode.appendChild(datalist);
+    field.setAttribute('list', datalistId);
+
+    field.addEventListener('change', () => {
+        const selected = mockData.find(item => item.value === field.value);
+        if (selected) {
+            if (fields.inn) fields.inn.value = selected.inn;
+            if (fields.ogrn) fields.ogrn.value = selected.ogrn;
+            if (orgDataField) orgDataField.value = JSON.stringify(selected);
+        }
+    });
+};
+
 // ----------------------------------------------------------------------------
 // SECTION: Сообщения и уведомления
 // ----------------------------------------------------------------------------
@@ -907,44 +1152,6 @@ const setupHeroAnimation = () => {
     setInterval(applyRandomAnimation, 1000);
 };
 
-/**
- * Настраивает кнопку "Наверх"
- */
-const setupScrollToTopButton = () => {
-    const scrollButton = document.getElementById('scrollToTop');
-    if (!scrollButton) return;
-
-    window.addEventListener('scroll', () => {
-        scrollButton.style.display = window.pageYOffset > APP_CONFIG.SCROLL_TOP_THRESHOLD ? 'block' : 'none';
-    });
-
-    scrollButton.addEventListener('click', (e) => {
-        e.preventDefault();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-};
-
-/**
- * Выравнивает высоту описания проекта
- */
-const setupProjectDescriptionHeight = () => {
-    const imagePreview = document.getElementById('image_preview');
-    const descriptionCol = document.querySelector('.project_description_col');
-
-    if (!imagePreview || !descriptionCol) return;
-
-    const updateHeight = () => {
-        if (window.innerWidth >= 992) {
-            descriptionCol.style.height = `${imagePreview.offsetHeight}px`;
-        } else {
-            descriptionCol.style.height = '';
-        }
-    };
-
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-};
-
 // ----------------------------------------------------------------------------
 // SECTION: HTMX интеграция
 // ----------------------------------------------------------------------------
@@ -976,6 +1183,14 @@ const setupHTMXContentHandlers = () => {
         setupAjaxForms();
         setupFormSubmitHandlers();
         initializeProjectForms();
+
+        // Реинициализация таблицы РИД, если мы на соответствующей странице
+        if (isIPListPage()) {
+            initializeIPTablePopovers();
+            setupIPColumnsVisibility();
+            updateIPTableStats();
+        }
+
         setTimeout(() => showAlertMessages(APP_CONFIG.ALERT_DISPLAY_DELAY), 100);
     });
 
@@ -984,6 +1199,11 @@ const setupHTMXContentHandlers = () => {
         if (event.detail.target.id === 'modal-content') {
             setupProjectCoverPreview();
             initializeOrganizationAutocomplete();
+
+            // Если в модалке есть таблица РИД
+            if (isIPListPage()) {
+                initializeIPTablePopovers();
+            }
         }
     });
 
@@ -1034,6 +1254,15 @@ const initializeApp = () => {
     setHeaderPlugHeight();
     toggleSpinner(false);
 
+    // Инициализация таблицы РИД, если мы на соответствующей странице
+    if (isIPListPage()) {
+        initializeIPTablePopovers();
+        setupIPFiltersStorage();
+        setupIPColumnsVisibility();
+        setupIPHotkeys();
+        updateIPTableStats();
+    }
+
     // Показ сообщений с небольшой задержкой
     setTimeout(() => showAlertMessages(APP_CONFIG.ALERT_DISPLAY_DELAY), 100);
 };
@@ -1049,6 +1278,11 @@ document.addEventListener('DOMContentLoaded', initializeApp);
 window.addEventListener('load', () => {
     setHeaderPlugHeight();
     setupProjectDescriptionHeight();
+
+    // Обновление статистики таблицы РИД после полной загрузки
+    if (isIPListPage()) {
+        updateIPTableStats();
+    }
 });
 
 /**
@@ -1068,6 +1302,7 @@ if (typeof module !== 'undefined' && module.exports) {
         toggleSpinner,
         setHeaderPlugHeight,
         initializeApp,
-        APP_CONFIG
+        APP_CONFIG,
+        isIPListPage
     };
 }

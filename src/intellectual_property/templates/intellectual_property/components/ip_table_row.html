@@ -1,75 +1,175 @@
+{# templates/intellectual_property/components/ip_table_row.html #}
+{% load static %}
 {% load common_tags %}
-<tr>
-  <td>{{ ip.ip_type.name|default:'—'|typus }}</td>
-  <td>{{ ip.name|truncatechars:50|typus }}</td>
-  <td>{{ ip.creation_year|default:'—' }}</td>
-  <td>{{ ip.registration_number|default:'—' }}</td>
-  <td>{{ ip.registration_date|date:'d.m.Y'|default:'—' }}</td>
-  <td>
-    {% with owners=ip.all_owners %}
-      {% if owners %}
-        {% for owner in owners|slice:':2' %}
-          {% if owner.last_name %}
-            {# Это Person #}
-            {{ owner.get_short_name }}
-          {% else %}
-            {# Это Organization #}
-            {{ owner.short_name|default:owner.name|truncatechars:30 }}
-          {% endif %}
-          {% if not forloop.last %}, {% endif %}
-        {% endfor %}
-        {% if owners|length > 2 %}...{% endif %}
-      {% else %}
-        —
-      {% endif %}
-    {% endwith %}
+
+<tr style="font-size: 0.9rem;">
+  <!-- Вид РИД -->
+  <td data-column="type">
+    <span class="badge bg-light text-dark border" style="font-size: 0.75rem; font-weight: normal; white-space: normal; text-align: left;">{{ ip.ip_type.name|default:'—'|truncatechars:25|typus }}</span>
   </td>
-  <td>—</td> {# Объем прав РФ #}
-  <td>{{ ip.ip_type.protection_document_type.name|default:'—'|typus }}</td>
-  <td>{{ ip.registration_number|default:'—' }}</td> {# Номер охранного документа #}
-  <td>{{ ip.registration_date|date:'d.m.Y'|default:'—' }}</td> {# Дата охранного документа #}
-  <td>—</td> {# Номер заявки #}
-  <td>{{ ip.application_date|date:'d.m.Y'|default:'—' }}</td>
-  <td>
-    {% with authors=ip.authors.all %}
-      {% if authors %}
-        {% for author in authors|slice:':2' %}
-          {{ author.get_short_name }}{% if not forloop.last %}, {% endif %}
-        {% endfor %}
-        {% if authors|length > 2 %}...{% endif %}
-      {% else %}
-        —
-      {% endif %}
-    {% endwith %}
+
+  <!-- Наименование РИД с тултипом -->
+  <td data-column="name">
+    <span title="{{ ip.name|typus }}" style="cursor: help;">{{ ip.name|truncatechars:45|typus }}</span>
   </td>
-  <td>—</td> {# Секретность #}
-  <td>—</td> {# Лицензиаты #}
-  <td>{{ ip.abstract|truncatechars:30|default:'—' }}</td>
-  <td>—</td> {# Адрес для переписки #}
-  <td>
-    {% if ip.actual %}
-      <span class="badge bg-success">Действует</span>
+
+  <!-- Год создания -->
+  <td data-column="year" class="text-center">
+    {% if ip.creation_year %}
+      <span class="badge bg-secondary bg-opacity-10 text-dark">{{ ip.creation_year }}</span>
     {% else %}
-      <span class="badge bg-secondary">Не действует</span>
+      —
     {% endif %}
   </td>
-  <td>{{ ip.updated_at|date:'d.m.Y'|default:'—' }}</td>
-  <td>
-    {% for lang in ip.programming_languages.all %}
-      {{ lang.name }}{% if not forloop.last %}, {% endif %}
-    {% empty %}
+
+  <!-- Дата регистрации -->
+  <td data-column="regDate" class="text-center small">
+    {% if ip.registration_date %}
+      {{ ip.registration_date|date:'d.m.Y' }}
+    {% else %}
       —
-    {% endfor %}
+    {% endif %}
   </td>
-  <td>
-    {% for db in ip.dbms.all %}
-      {{ db.name }}{% if not forloop.last %}, {% endif %}
-    {% empty %}
+
+  <!-- Правообладатели -->
+  <td data-column="owners" style="max-width: 200px;">
+    {% with persons=ip.owner_persons.all orgs=ip.owner_organizations.all %}
+      {% if persons or orgs %}
+        {% for org in orgs|slice:':1' %}
+          <span class="d-inline-block" title="{{ org.name }}">
+            <i class="bi bi-building text-primary me-1" style="font-size: 0.75rem;"></i>
+            {{ org.short_name|default:org.name|truncatechars:25 }}
+          </span>
+        {% endfor %}
+
+        {% if persons and orgs %}
+          <span class="text-muted mx-1">;</span>
+        {% endif %}
+
+        {% for person in persons|slice:':1' %}
+          <span class="d-inline-block" title="{{ person.get_full_name }}">
+            <i class="bi bi-person text-success me-1" style="font-size: 0.75rem;"></i>
+            {{ person.get_short_name }}
+          </span>
+        {% endfor %}
+
+        {% with total=persons|length|add:orgs|length %}
+          {% if total > 1 %}
+            <span class="text-muted small ms-1">+{{ total|add:'-1' }}</span>
+          {% endif %}
+        {% endwith %}
+      {% else %}
+        —
+      {% endif %}
+    {% endwith %}
+  </td>
+
+  <!-- Вид охранного документа -->
+  <td data-column="docType">
+    <span class="small text-muted">{{ ip.ip_type.protection_document_type.name|default:'—'|truncatechars:15|typus }}</span>
+  </td>
+
+  <!-- Номер охранного документа + ссылка -->
+  <td data-column="docNumber">
+    {% if ip.publication_url %}
+      <a href="{{ ip.publication_url }}" target="_blank" class="text-decoration-none" title="Открыть в реестре ФИПС">
+        <i class="bi bi-box-arrow-up-right me-1" style="font-size: 0.7rem;"></i>
+        {{ ip.registration_number|default:'—'|truncatechars:12 }}
+      </a>
+    {% else %}
+      {{ ip.registration_number|default:'—' }}
+    {% endif %}
+  </td>
+
+  <!-- Дата охранного документа -->
+  <td data-column="docDate" class="text-center small">{{ ip.registration_date|date:'d.m.Y'|default:'—' }}</td>
+
+  <!-- Дата подачи заявки -->
+  <td data-column="appDate" class="text-center small">{{ ip.application_date|date:'d.m.Y'|default:'—' }}</td>
+
+  <!-- Авторы -->
+  <td data-column="authors" style="max-width: 150px;">
+    {% with authors=ip.authors.all %}
+      {% if authors %}
+        {% for author in authors|slice:':1' %}
+          <span title="{{ author.get_full_name }}">
+            <i class="bi bi-pencil-square text-secondary me-1" style="font-size: 0.7rem;"></i>
+            {{ author.get_short_name }}
+          </span>
+        {% endfor %}
+        {% if authors|length > 1 %}
+          <span class="text-muted small ms-1">+{{ authors|length|add:'-1' }}</span>
+        {% endif %}
+      {% else %}
+        —
+      {% endif %}
+    {% endwith %}
+  </td>
+
+  <!-- Реферат (иконка с поповером) -->
+  <td data-column="abstract" class="text-center">
+    {% if ip.abstract %}
+      <i class="bi bi-file-text text-info" style="cursor: help; font-size: 1rem;" data-bs-toggle="popover" data-bs-trigger="hover focus" title="Реферат" data-bs-content="{{ ip.abstract|truncatechars:300 }}"></i>
+    {% else %}
       —
-    {% endfor %}
+    {% endif %}
   </td>
-  <td>—</td> {# Объем #}
-  <td>{{ ip.claims|truncatechars:30|default:'—' }}</td>
-  <td>—</td> {# Цитируемые документы #}
-  <td>{{ ip.expiration_date|date:'d.m.Y'|default:'—' }}</td>
+
+  <!-- Статус -->
+  <td data-column="status" class="text-center">
+    {% if ip.actual %}
+      <span class="badge bg-success" style="font-size: 0.7rem;">Действует</span>
+    {% else %}
+      <span class="badge bg-secondary" style="font-size: 0.7rem;">Не действует</span>
+    {% endif %}
+  </td>
+
+  <!-- Дата изменения статуса -->
+  <td data-column="statusDate" class="text-center small">{{ ip.updated_at|date:'d.m.Y'|default:'—' }}</td>
+
+  <!-- Языки программирования -->
+  <td data-column="lang" class="text-center">
+    {% with langs=ip.programming_languages.all %}
+      {% if langs %}
+        <i class="bi bi-code-square text-primary" style="cursor: help; font-size: 1rem;" data-bs-toggle="popover" data-bs-trigger="hover focus" title="Языки программирования" data-bs-content="{{ langs|join:', ' }}"></i>
+      {% else %}
+        —
+      {% endif %}
+    {% endwith %}
+  </td>
+
+  <!-- СУБД -->
+  <td data-column="db" class="text-center">
+    {% with dbs=ip.dbms.all %}
+      {% if dbs %}
+        <i class="bi bi-database text-warning" style="cursor: help; font-size: 1rem;" data-bs-toggle="popover" data-bs-trigger="hover focus" title="СУБД" data-bs-content="{{ dbs|join:', ' }}"></i>
+      {% else %}
+        —
+      {% endif %}
+    {% endwith %}
+  </td>
+
+  <!-- Формула -->
+  <td data-column="claims" class="text-center">
+    {% if ip.claims %}
+      <i class="bi bi-file-earmark-text text-secondary" style="cursor: help; font-size: 1rem;" data-bs-toggle="popover" data-bs-trigger="hover focus" title="Формула" data-bs-content="{{ ip.claims|truncatechars:300 }}"></i>
+    {% else %}
+      —
+    {% endif %}
+  </td>
+
+  <!-- Срок действия -->
+  <td data-column="expiry" class="text-center small">
+    {% if ip.expiration_date %}
+      <span class="{% if ip.is_expired %}
+          text-danger
+        {% else %}
+          text-success
+        {% endif %}">
+        {{ ip.expiration_date|date:'d.m.Y' }}
+      </span>
+    {% else %}
+      —
+    {% endif %}
+  </td>
 </tr>
