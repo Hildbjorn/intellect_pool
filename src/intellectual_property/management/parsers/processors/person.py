@@ -1,7 +1,6 @@
 """
 Форматирование имен людей
 """
-
 from .text_processor import RussianTextProcessor
 
 

@@ -5,8 +5,8 @@
 import logging
 import re
 from datetime import datetime
-from typing import Optional, Tuple, List, Dict, Any, Set
-from collections import defaultdict
+from typing import Optional, List, Dict, Any
+import gc
 
 from django.db import models
 from django.utils.text import slugify
@@ -15,7 +15,7 @@ import pandas as pd
 from intellectual_property.models import IPObject, IPType
 from core.models import Person, Organization, Country
 
-# Исправляем импорты процессоров
+# ИСПРАВЛЕНО: импортируем процессоры из текущего пакета (.processors)
 from .processors import (
     RussianTextProcessor,
     OrganizationNormalizer,
@@ -23,6 +23,9 @@ from .processors import (
     RIDNameFormatter,
     EntityTypeDetector
 )
+
+# ИСПРАВЛЕНО: импортируем утилиты из родительского пакета (..utils)
+from ..utils.progress import ProgressManager, batch_iterator
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,9 @@ class BaseFIPSParser:
         self.command = command
         self.stdout = command.stdout
         self.style = command.style
+
+        # Инициализация менеджера прогресса
+        self.progress = ProgressManager(file=self.stdout)
 
         # Инициализация процессоров
         self.processor = RussianTextProcessor()
@@ -126,11 +132,14 @@ class BaseFIPSParser:
             return None
 
         except Exception as e:
-            self.stdout.write(self.style.WARNING(f"  Ошибка поиска страны {code}: {e}"))
+            self.progress.warning(f"Ошибка поиска страны {code}: {e}")
             return None
 
     def parse_authors(self, authors_str):
-        """Парсинг строки с авторами"""
+        """
+        Парсинг строки с авторами
+        Возвращает список словарей с данными авторов
+        """
         if pd.isna(authors_str) or not authors_str:
             return []
 
@@ -174,7 +183,10 @@ class BaseFIPSParser:
         return result
 
     def parse_patent_holders(self, holders_str):
-        """Парсинг строки с патентообладателями"""
+        """
+        Парсинг строки с патентообладателями
+        Возвращает список названий
+        """
         if pd.isna(holders_str) or not holders_str:
             return []
 
@@ -247,7 +259,7 @@ class BaseFIPSParser:
             self.person_cache[cache_key] = person
             return person
         except Exception as e:
-            self.stdout.write(self.style.WARNING(f"  Ошибка создания Person: {e}"))
+            self.progress.warning(f"Ошибка создания Person: {e}")
             return None
 
     def find_or_create_person_from_name(self, full_name):
@@ -393,5 +405,5 @@ class BaseFIPSParser:
             self.organization_cache[org_name] = org
             return org
         except Exception as e:
-            self.stdout.write(self.style.WARNING(f"  Ошибка создания Organization: {e}"))
+            self.progress.warning(f"Ошибка создания Organization: {e}")
             return None

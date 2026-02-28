@@ -1,3 +1,7 @@
+"""
+Пакет с парсерами для различных типов РИД
+"""
+
 from .invention import InventionParser
 from .utility_model import UtilityModelParser
 from .industrial_design import IndustrialDesignParser
@@ -5,7 +9,7 @@ from .integrated_circuit import IntegratedCircuitTopologyParser
 from .computer_program import ComputerProgramParser
 from .database import DatabaseParser
 
-# Импортируем процессоры из правильного места
+# Импортируем процессоры из подпакета processors (правильно: .processors)
 from .processors import (
     RussianTextProcessor,
     OrganizationNormalizer,

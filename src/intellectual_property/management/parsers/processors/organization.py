@@ -8,6 +8,8 @@ from typing import Dict, Any
 import pandas as pd
 
 from core.models import OrganizationNormalizationRule
+
+# ИСПРАВЛЕНО: импортируем из текущего пакета (.text_processor)
 from .text_processor import RussianTextProcessor
 
 

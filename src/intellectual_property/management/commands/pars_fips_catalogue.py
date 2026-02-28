@@ -12,7 +12,7 @@ import pandas as pd
 
 from intellectual_property.models import FipsOpenDataCatalogue
 
-# Импортируем парсеры из нового пакета
+# Импортируем парсеры из пакета parsers (правильно: ..parsers)
 from ..parsers import (
     InventionParser, UtilityModelParser, IndustrialDesignParser,
     IntegratedCircuitTopologyParser, ComputerProgramParser, DatabaseParser

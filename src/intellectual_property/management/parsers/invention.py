@@ -1,34 +1,43 @@
 """
-Парсер для изобретений с пакетной обработкой
+Парсер для изобретений с использованием единого DataFrame для связей
 """
 
 import logging
+import gc
+from typing import Dict, List, Tuple, Any, Optional
 from collections import defaultdict
 
-from django.db import models
-from django.utils.text import slugify
-from tqdm import tqdm
 import pandas as pd
+from django.db import models, transaction
+from django.utils.text import slugify
 
-# Добавляем недостающие импорты
 from intellectual_property.models import IPObject, IPType, Person
-from core.models import Organization  # <-- Добавлен этот импорт
+from core.models import Organization
+
 from .base import BaseFIPSParser
+from ..utils.progress import ProgressManager, batch_iterator
 
 logger = logging.getLogger(__name__)
 
 
 class InventionParser(BaseFIPSParser):
-    """Парсер для изобретений с пакетной обработкой"""
+    """
+    Парсер для изобретений с оптимизированной обработкой связей
+    Использует единый DataFrame для всех связей (авторы + правообладатели)
+    """
 
     def get_ip_type(self):
+        """Возвращает тип РИД 'invention'"""
         return IPType.objects.filter(slug='invention').first()
 
     def get_required_columns(self):
+        """Возвращает список обязательных колонок для CSV"""
         return ['registration number', 'invention name']
 
     def _has_data_changed(self, obj, new_data):
-        """Проверяет, изменились ли данные"""
+        """
+        Проверяет, изменились ли данные объекта
+        """
         fields_to_check = [
             ('name', obj.name, new_data['name']),
             ('application_date', obj.application_date, new_data['application_date']),
@@ -48,7 +57,10 @@ class InventionParser(BaseFIPSParser):
         return False
 
     def parse_dataframe(self, df, catalogue):
-        self.stdout.write(self.style.SUCCESS("  🔄 Начинаем парсинг изобретений..."))
+        """
+        Основной метод парсинга DataFrame
+        """
+        self.progress.step("Начинаем парсинг изобретений")
 
         stats = {
             'processed': 0,
@@ -60,67 +72,81 @@ class InventionParser(BaseFIPSParser):
             'errors': 0
         }
 
+        # Получаем тип РИД
         ip_type = self.get_ip_type()
         if not ip_type:
-            self.stdout.write(self.style.ERROR("  ❌ Тип РИД 'invention' не найден в БД"))
+            self.progress.error("Тип РИД 'invention' не найден в БД")
             stats['errors'] += 1
             return stats
 
-        # Получаем дату загрузки каталога
         upload_date = catalogue.upload_date.date() if catalogue.upload_date else None
 
-        # ШАГ 1: Собираем все регистрационные номера
-        self.stdout.write("  📥 Чтение CSV...")
-        all_reg_numbers = []
+        # =====================================================================
+        # ШАГ 1: Сбор регистрационных номеров
+        # =====================================================================
+        self.progress.step("Чтение CSV и сбор регистрационных номеров")
+        
         reg_num_to_row = {}
+        skipped_empty = 0
+        
+        for idx, row in df.iterrows():
+            reg_num = self.clean_string(row.get('registration number'))
+            if reg_num:
+                reg_num_to_row[reg_num] = row
+            else:
+                skipped_empty += 1
 
-        with tqdm(total=len(df), desc="     Прогресс", unit=" зап", leave=False) as pbar:
-            for idx, row in df.iterrows():
-                reg_num = self.clean_string(row.get('registration number'))
-                if reg_num:
-                    all_reg_numbers.append(reg_num)
-                    reg_num_to_row[reg_num] = row
-                pbar.update(1)
+        self.progress.step(f"Всего записей в CSV: {len(reg_num_to_row)} (пропущено пустых: {skipped_empty})")
 
-        self.stdout.write(f"  📊 Всего записей в CSV: {len(all_reg_numbers)}")
-
-        # ШАГ 2: Загружаем существующие записи ПАЧКАМИ
-        self.stdout.write("  🔍 Загрузка существующих записей из БД...")
+        # =====================================================================
+        # ШАГ 2: Загрузка существующих записей из БД
+        # =====================================================================
+        self.progress.step("Загрузка существующих записей из БД")
+        
         existing_objects = {}
         batch_size = 500
-
-        with tqdm(total=len(all_reg_numbers), desc="     Загрузка пачками", unit=" зап") as pbar:
-            for i in range(0, len(all_reg_numbers), batch_size):
-                batch_numbers = all_reg_numbers[i:i+batch_size]
-
+        reg_numbers = list(reg_num_to_row.keys())
+        
+        # Прогресс-бар с редким обновлением
+        with self.progress.task("Загрузка пачками", 
+                               total=len(reg_numbers), 
+                               unit="зап",
+                               mininterval=2.0) as pbar:  # Обновление раз в 2 секунды
+            
+            for i in range(0, len(reg_numbers), batch_size):
+                batch_numbers = reg_numbers[i:i+batch_size]
+                
                 for obj in IPObject.objects.filter(
                     registration_number__in=batch_numbers,
                     ip_type=ip_type
                 ).select_related('ip_type'):
                     existing_objects[obj.registration_number] = obj
-
+                
                 pbar.update(len(batch_numbers))
 
-                if (i // batch_size) % 10 == 0:
-                    pbar.set_postfix({"найдено": len(existing_objects)})
+        self.progress.step(f"Найдено в БД: {len(existing_objects)}")
 
-        self.stdout.write(f"  📊 Найдено в БД: {len(existing_objects)}")
-
-        # ШАГ 3: Подготавливаем данные для пакетной обработки
-        self.stdout.write("  🔄 Подготовка данных...")
+        # =====================================================================
+        # ШАГ 3: Подготовка данных для IPObject
+        # =====================================================================
+        self.progress.step("Подготовка данных IPObject")
+        
         to_create = []
         to_update = []
         skipped_by_date = []
         unchanged_count = 0
         error_reg_numbers = []
 
-        authors_cache = defaultdict(list)
-        holders_cache = defaultdict(list)
+        relations_data = []
+        
+        # Прогресс-бар с редким обновлением
+        with self.progress.task("Подготовка данных IPObject", 
+                               total=len(reg_num_to_row), 
+                               unit="зап",
+                               mininterval=2.0) as pbar:
 
-        with tqdm(total=len(reg_num_to_row), desc="     Обработка записей", unit=" зап") as pbar:
             for reg_num, row in reg_num_to_row.items():
                 try:
-                    # Проверка по дате
                     if not self.command.force and upload_date and reg_num in existing_objects:
                         existing = existing_objects[reg_num]
                         if existing.updated_at and existing.updated_at.date() >= upload_date:
@@ -128,14 +154,12 @@ class InventionParser(BaseFIPSParser):
                             pbar.update(1)
                             continue
 
-                    # Форматируем название
                     name = self.clean_string(row.get('invention name'))
                     if name:
                         name = self.rid_formatter.format(name)
                     else:
                         name = f"Изобретение №{reg_num}"
 
-                    # Парсим даты
                     application_date = self.parse_date(row.get('application date'))
                     registration_date = self.parse_date(row.get('registration date'))
                     patent_starting_date = self.parse_date(row.get('patent starting date'))
@@ -151,10 +175,9 @@ class InventionParser(BaseFIPSParser):
                     elif registration_date:
                         creation_year = registration_date.year
 
-                    # Подготовка данных
                     obj_data = {
                         'registration_number': reg_num,
-                        'ip_type': ip_type,
+                        'ip_type_id': ip_type.id,
                         'name': name,
                         'application_date': application_date,
                         'registration_date': registration_date,
@@ -168,636 +191,546 @@ class InventionParser(BaseFIPSParser):
                     }
 
                     if reg_num in existing_objects:
-                        # Проверяем, изменились ли данные
-                        existing = existing_objects[reg_num]
-                        if self._has_data_changed(existing, obj_data):
+                        if self._has_data_changed(existing_objects[reg_num], obj_data):
                             to_update.append(obj_data)
                         else:
                             unchanged_count += 1
                     else:
                         to_create.append(obj_data)
 
-                    # Сохраняем авторов и правообладателей
+                    # Авторы
                     authors_str = row.get('authors')
                     if not pd.isna(authors_str) and authors_str:
-                        authors_cache[reg_num] = self.parse_authors(authors_str)
+                        authors = self.parse_authors(authors_str)
+                        for author in authors:
+                            relations_data.append({
+                                'reg_number': reg_num,
+                                'entity_name': author['full_name'],
+                                'entity_type': 'person',
+                                'relation_type': 'author',
+                                'entity_data': author
+                            })
 
+                    # Патентообладатели
                     holders_str = row.get('patent holders')
                     if not pd.isna(holders_str) and holders_str:
-                        holders_cache[reg_num] = self.parse_patent_holders(holders_str)
+                        holders = self.parse_patent_holders(holders_str)
+                        for holder in holders:
+                            relations_data.append({
+                                'reg_number': reg_num,
+                                'entity_name': holder,
+                                'entity_type': None,
+                                'relation_type': 'holder',
+                                'entity_data': {'full_name': holder}
+                            })
 
                 except Exception as e:
                     error_reg_numbers.append(reg_num)
-                    self.stdout.write(self.style.ERROR(f"\n  ❌ Ошибка подготовки записи {reg_num}: {e}"))
+                    if len(error_reg_numbers) < 10:
+                        self.progress.error(f"Ошибка подготовки записи {reg_num}: {e}")
+                    elif len(error_reg_numbers) == 10:
+                        self.progress.warning("... и далее ошибки подавляются")
+                    
                     logger.error(f"Error preparing invention {reg_num}: {e}", exc_info=True)
 
                 pbar.update(1)
-                if pbar.n % 1000 == 0:
-                    pbar.set_postfix({
-                        "новые": len(to_create),
-                        "обнов": len(to_update),
-                        "без изм": unchanged_count,
-                        "пропущ": len(skipped_by_date)
-                    })
+                
+                # Выводим статистику редко (каждые 50000 записей)
+                if pbar.n % 50000 == 0:
+                    self.progress.step(f"Обработано {pbar.n} записей: новых={len(to_create)}, "
+                                      f"обнов={len(to_update)}, без изм={unchanged_count}, "
+                                      f"пропущ={len(skipped_by_date)}, ошибок={len(error_reg_numbers)}")
+
+        self.progress.step(f"Итого: новых={len(to_create)}, обновление={len(to_update)}, "
+                          f"без изменений={unchanged_count}, ошибок={len(error_reg_numbers)}")
 
         stats['skipped_by_date'] = len(skipped_by_date)
         stats['skipped'] += len(skipped_by_date)
         stats['errors'] = len(error_reg_numbers)
         stats['unchanged'] = unchanged_count
 
-        self.stdout.write(f"     Итого: новых={len(to_create)}, обновление={len(to_update)}, без изменений={unchanged_count}")
-
-        # ШАГ 4: Пакетное создание новых записей
+        # =====================================================================
+        # ШАГ 4: Создание/обновление IPObject
+        # =====================================================================
         if to_create and not self.command.dry_run:
-            self.stdout.write(f"  📦 Создание {len(to_create)} записей...")
-            create_objects = [IPObject(**data) for data in to_create]
+            self.progress.step(f"Создание {len(to_create)} новых записей")
+            with self.progress.task("Создание", total=len(to_create), unit="зап", mininterval=2.0) as pbar:
+                stats['created'] = self._bulk_create_objects(to_create, pbar)
 
-            batch_size = 1000
-            created_count = 0
-
-            with tqdm(total=len(create_objects), desc="     Создание", unit=" зап") as pbar:
-                for i in range(0, len(create_objects), batch_size):
-                    batch = create_objects[i:i+batch_size]
-                    IPObject.objects.bulk_create(batch, batch_size=batch_size)
-                    created_count += len(batch)
-                    pbar.update(len(batch))
-                    pbar.set_postfix({"создано": created_count})
-
-            stats['created'] = created_count
-
-            # Обновляем кэш новыми объектами
-            self.stdout.write("     Обновление кэша...")
-
-            with tqdm(total=len(to_create), desc="     Обновление кэша", unit=" зап") as pbar:
-                for i in range(0, len(to_create), batch_size):
-                    batch_data = to_create[i:i+batch_size]
-                    batch_nums = [d['registration_number'] for d in batch_data]
-
-                    for obj in IPObject.objects.filter(
-                        registration_number__in=batch_nums,
-                        ip_type=ip_type
-                    ):
-                        existing_objects[obj.registration_number] = obj
-
-                    pbar.update(len(batch_data))
-
-        # ШАГ 5: Пакетное обновление существующих записей
         if to_update and not self.command.dry_run:
-            self.stdout.write(f"  📦 Обновление {len(to_update)} записей...")
-            updated_count = 0
+            self.progress.step(f"Обновление {len(to_update)} записей")
+            with self.progress.task("Обновление", total=len(to_update), unit="зап", mininterval=2.0) as pbar:
+                stats['updated'] = self._bulk_update_objects(to_update, existing_objects, pbar)
 
-            with tqdm(total=len(to_update), desc="     Обновление", unit=" зап") as pbar:
-                for data in to_update:
-                    obj = existing_objects[data['registration_number']]
-                    update_fields = []
+        # =====================================================================
+        # ШАГ 5: Получаем актуальный маппинг reg_number -> ip_id
+        # =====================================================================
+        self.progress.step("Построение маппинга регистрационных номеров")
+        
+        all_reg_numbers = list(set(
+            list(existing_objects.keys()) + 
+            [data['registration_number'] for data in to_create]
+        ))
+        
+        reg_to_ip = {}
+        with self.progress.task("Загрузка ID объектов", total=len(all_reg_numbers), unit="зап", mininterval=2.0) as pbar:
+            batch_size = 1000
+            for i in range(0, len(all_reg_numbers), batch_size):
+                batch_nums = all_reg_numbers[i:i+batch_size]
+                for obj in IPObject.objects.filter(
+                    registration_number__in=batch_nums,
+                    ip_type=ip_type
+                ).only('id', 'registration_number'):
+                    reg_to_ip[obj.registration_number] = obj.id
+                pbar.update(len(batch_nums))
 
-                    if obj.name != data['name']:
-                        obj.name = data['name']
-                        update_fields.append('name')
+        self.progress.step(f"Загружено ID для {len(reg_to_ip)} объектов")
 
-                    if obj.application_date != data['application_date']:
-                        obj.application_date = data['application_date']
-                        update_fields.append('application_date')
+        # =====================================================================
+        # ШАГ 6: Обработка связей через единый DataFrame
+        # =====================================================================
+        if relations_data and not self.command.dry_run:
+            self.progress.step("Обработка связей")
+            self._process_relations_dataframe(relations_data, reg_to_ip)
 
-                    if obj.registration_date != data['registration_date']:
-                        obj.registration_date = data['registration_date']
-                        update_fields.append('registration_date')
-
-                    if obj.patent_starting_date != data['patent_starting_date']:
-                        obj.patent_starting_date = data['patent_starting_date']
-                        update_fields.append('patent_starting_date')
-
-                    if obj.expiration_date != data['expiration_date']:
-                        obj.expiration_date = data['expiration_date']
-                        update_fields.append('expiration_date')
-
-                    if obj.actual != data['actual']:
-                        obj.actual = data['actual']
-                        update_fields.append('actual')
-
-                    if obj.publication_url != data['publication_url']:
-                        obj.publication_url = data['publication_url']
-                        update_fields.append('publication_url')
-
-                    if obj.abstract != data['abstract']:
-                        obj.abstract = data['abstract']
-                        update_fields.append('abstract')
-
-                    if obj.claims != data['claims']:
-                        obj.claims = data['claims']
-                        update_fields.append('claims')
-
-                    if obj.creation_year != data['creation_year']:
-                        obj.creation_year = data['creation_year']
-                        update_fields.append('creation_year')
-
-                    if update_fields:
-                        obj.save(update_fields=update_fields)
-                        updated_count += 1
-
-                    pbar.update(1)
-                    if pbar.n % 100 == 0:
-                        pbar.set_postfix({"обновлено": updated_count})
-
-            stats['updated'] = updated_count
-            self.stdout.write(f"     Реально обновлено: {updated_count} из {len(to_update)}")
-
-        # ШАГ 6: Пакетная обработка авторов
-        if authors_cache and not self.command.dry_run:
-            self.stdout.write(f"  📦 Обработка авторов ({len(authors_cache)} записей)...")
-            self._process_authors_batch_with_progress(existing_objects, authors_cache)
-
-        # ШАГ 7: Пакетная обработка патентообладателей
-        if holders_cache and not self.command.dry_run:
-            self.stdout.write(f"  📦 Обработка патентообладателей ({len(holders_cache)} записей)...")
-            self._process_holders_batch_with_progress(existing_objects, holders_cache)
+        gc.collect()
 
         stats['processed'] = len(df) - stats['skipped'] - stats['errors']
 
-        self.stdout.write(self.style.SUCCESS(f"  ✅ Парсинг изобретений завершен"))
-        self.stdout.write(f"     Создано: {stats['created']}, Обновлено: {stats['updated']}, "
-                         f"Без изменений: {stats['unchanged']}, "
-                         f"Пропущено всего: {stats['skipped']} (из них по дате: {stats['skipped_by_date']}), "
-                         f"Ошибок: {stats['errors']}")
+        self.progress.success("Парсинг изобретений завершен")
+        self.progress.step(f"Создано: {stats['created']}, Обновлено: {stats['updated']}, "
+                          f"Без изменений: {stats['unchanged']}")
+        self.progress.step(f"Пропущено: {stats['skipped']} (из них по дате: {stats['skipped_by_date']})")
+        self.progress.step(f"Ошибок: {stats['errors']}")
 
         return stats
 
-    def _process_authors_batch_with_progress(self, existing_objects, authors_cache):
-        """Обработка авторов с прогресс-баром и разбивкой на пачки"""
-        self.stdout.write(f"     ⚡ Обработка авторов...")
+    def _bulk_create_objects(self, to_create: List[Dict], pbar) -> int:
+        """Пакетное создание объектов IPObject"""
+        created_count = 0
+        batch_size = 1000
 
-        # ШАГ 1: Сбор уникальных авторов
-        self.stdout.write("        Шаг 1/6: Сбор уникальных авторов...")
-        author_to_key = {}
-        total_relations = 0
+        for batch in batch_iterator(to_create, batch_size):
+            create_objects = [IPObject(**data) for data in batch]
+            IPObject.objects.bulk_create(create_objects, batch_size=batch_size)
+            created_count += len(batch)
+            pbar.update(len(batch))
+            
+            if created_count % 50000 == 0:
+                self.progress.step(f"Создано {created_count} записей")
 
-        for reg_num, authors_data in authors_cache.items():
-            ip_object = existing_objects.get(reg_num)
-            if not ip_object:
-                continue
+        return created_count
 
-            for author_data in authors_data:
-                key = f"{author_data['last_name']}|{author_data['first_name']}|{author_data['middle_name']}"
-                if key not in author_to_key:
-                    author_to_key[key] = {
-                        'data': author_data,
-                        'ip_objects': []
-                    }
-                author_to_key[key]['ip_objects'].append(ip_object)
-                total_relations += 1
+    def _bulk_update_objects(self, to_update: List[Dict], existing_objects: Dict, pbar) -> int:
+        """Пакетное обновление объектов IPObject"""
+        updated_count = 0
+        BATCH_UPDATE_SIZE = 500
 
-        all_keys = list(author_to_key.keys())
-        self.stdout.write(f"        Уникальных авторов: {len(all_keys)}, всего связей: {total_relations}")
+        for batch in batch_iterator(to_update, BATCH_UPDATE_SIZE):
+            with transaction.atomic():
+                for data in batch:
+                    obj = existing_objects[data['registration_number']]
+                    update_fields = []
+                    for field, value in data.items():
+                        if field != 'registration_number' and getattr(obj, field) != value:
+                            setattr(obj, field, value)
+                            update_fields.append(field)
+                    if update_fields:
+                        obj.save(update_fields=update_fields)
+                        updated_count += 1
+            pbar.update(len(batch))
+            
+            if updated_count % 50000 == 0:
+                self.progress.step(f"Обновлено {updated_count} записей")
 
-        # ШАГ 2: Поиск в БД
-        self.stdout.write("        Шаг 2/6: Поиск в БД...")
-        existing_people = {}
-        batch_size = 50
+        return updated_count
 
-        with tqdm(total=len(all_keys), desc="           Поиск", unit=" ключ") as pbar:
-            for i in range(0, len(all_keys), batch_size):
-                batch_keys = all_keys[i:i+batch_size]
+    def _process_relations_dataframe(self, relations_data: List[Dict], reg_to_ip: Dict):
+        """Обработка всех связей через единый DataFrame"""
+        if not relations_data:
+            self.progress.step("Нет данных для обработки связей")
+            return
 
-                name_conditions = models.Q()
-                for key in batch_keys:
-                    last, first, middle = key.split('|')
-                    if middle:
-                        name_conditions |= models.Q(
-                            last_name=last,
-                            first_name=first,
-                            middle_name=middle
-                        )
-                    else:
-                        name_conditions |= models.Q(
-                            last_name=last,
-                            first_name=first,
-                            middle_name__isnull=True
-                        ) | models.Q(
-                            last_name=last,
-                            first_name=first,
-                            middle_name=''
-                        )
+        self.progress.step("Создание DataFrame связей")
+        df_relations = pd.DataFrame(relations_data)
+        
+        self.progress.step(f"Всего записей связей: {len(df_relations)}")
+        self.progress.step(f"Уникальных регистрационных номеров: {df_relations['reg_number'].nunique()}")
 
-                for person in Person.objects.filter(name_conditions):
-                    key = f"{person.last_name}|{person.first_name}|{person.middle_name or ''}"
-                    existing_people[key] = person
-                    self.person_cache[key] = person
+        self.progress.step("Добавление ID объектов")
+        df_relations['ip_id'] = df_relations['reg_number'].map(reg_to_ip)
 
-                pbar.update(len(batch_keys))
-                if (i // batch_size) % 10 == 0:
-                    pbar.set_postfix({"найдено": len(existing_people)})
+        missing_ip = df_relations['ip_id'].isna().sum()
+        if missing_ip > 0:
+            self.progress.warning(f"Пропущено {missing_ip} связей с отсутствующими ID объектов")
+            df_relations = df_relations.dropna(subset=['ip_id']).copy()
+        
+        df_relations['ip_id'] = df_relations['ip_id'].astype(int)
 
-        self.stdout.write(f"        Найдено существующих: {len(existing_people)}")
+        # =====================================================================
+        # ШАГ 6.1: Определение типов для правообладателей
+        # =====================================================================
+        self.progress.step("Определение типов сущностей через Natasha")
+        
+        unique_entities = df_relations[['entity_name', 'entity_type']].drop_duplicates()
+        holders_to_check = unique_entities[unique_entities['entity_type'].isna()]['entity_name'].tolist()
 
-        # ШАГ 3: Подготовка новых авторов
-        self.stdout.write("        Шаг 3/6: Подготовка новых авторов...")
-        people_to_create = []
-        key_to_new_person = {}
+        if holders_to_check:
+            self.progress.step(f"Определение типов для {len(holders_to_check)} правообладателей")
+            entity_type_map = self.type_detector.detect_type_batch(holders_to_check)
 
-        max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
-        next_id = max_id + 1
-        existing_slugs = set(Person.objects.values_list('slug', flat=True))
+            mask = df_relations['entity_type'].isna()
+            df_relations.loc[mask, 'entity_type'] = \
+                df_relations.loc[mask, 'entity_name'].map(entity_type_map)
 
-        with tqdm(total=len(all_keys), desc="           Подготовка", unit=" ключ") as pbar:
-            for key, info in author_to_key.items():
-                if key not in existing_people:
-                    author_data = info['data']
+        type_stats = df_relations['entity_type'].value_counts().to_dict()
+        self.progress.step(f"Распределение типов: люди={type_stats.get('person', 0)}, "
+                          f"организации={type_stats.get('organization', 0)}")
 
-                    name_parts = [author_data['last_name'], author_data['first_name']]
-                    if author_data['middle_name']:
-                        name_parts.append(author_data['middle_name'])
+        # =====================================================================
+        # ШАГ 6.2: Группировка по сущностям
+        # =====================================================================
+        unique_entities = df_relations[['entity_name', 'entity_type']].drop_duplicates()
+        
+        persons_df = unique_entities[unique_entities['entity_type'] == 'person']
+        orgs_df = unique_entities[unique_entities['entity_type'] == 'organization']
 
-                    base_slug = slugify(' '.join(name_parts).strip())
-                    if not base_slug:
-                        base_slug = 'person'
+        person_map = {}
+        if not persons_df.empty:
+            self.progress.step(f"Обработка {len(persons_df)} уникальных людей")
+            with self.progress.task("Создание/поиск людей", 
+                                   total=len(persons_df), 
+                                   unit="чел",
+                                   mininterval=5.0) as pbar:  # Очень редкое обновление
+                person_map = self._create_persons_from_dataframe(persons_df, pbar)
 
+        org_map = {}
+        if not orgs_df.empty:
+            self.progress.step(f"Обработка {len(orgs_df)} уникальных организаций")
+            with self.progress.task("Создание/поиск организаций", 
+                                   total=len(orgs_df), 
+                                   unit="орг",
+                                   mininterval=5.0) as pbar:
+                org_map = self._create_organizations_from_dataframe(orgs_df, pbar)
+
+        # =====================================================================
+        # ШАГ 6.3: Подготовка связей
+        # =====================================================================
+        self.progress.step("Подготовка связей для вставки в БД")
+        
+        authors_df = df_relations[df_relations['relation_type'] == 'author'].copy()
+        holders_df = df_relations[df_relations['relation_type'] == 'holder'].copy()
+
+        author_relations = []
+        if not authors_df.empty:
+            # ИСПРАВЛЕНО: используем ceo_id вместо id
+            authors_df['person_id'] = authors_df['entity_name'].map(
+                {name: p.ceo_id for name, p in person_map.items()}
+            )
+            authors_unique = authors_df[['ip_id', 'person_id']].drop_duplicates()
+            author_relations = [(row['ip_id'], row['person_id']) 
+                               for _, row in authors_unique.iterrows()]
+            self.progress.step(f"Подготовлено {len(author_relations)} уникальных связей авторов")
+
+        holder_person_relations = []
+        holder_org_relations = []
+        
+        if not holders_df.empty:
+            holders_persons = holders_df[holders_df['entity_type'] == 'person'].copy()
+            if not holders_persons.empty:
+                # ИСПРАВЛЕНО: используем ceo_id вместо id
+                holders_persons['person_id'] = holders_persons['entity_name'].map(
+                    {name: p.ceo_id for name, p in person_map.items()}
+                )
+                holders_persons_unique = holders_persons[['ip_id', 'person_id']].drop_duplicates()
+                holder_person_relations = [(row['ip_id'], row['person_id']) 
+                                          for _, row in holders_persons_unique.iterrows()]
+                self.progress.step(f"Подготовлено {len(holder_person_relations)} связей правообладателей-людей")
+
+            holders_orgs = holders_df[holders_df['entity_type'] == 'organization'].copy()
+            if not holders_orgs.empty:
+                # ИСПРАВЛЕНО: используем organization_id вместо id
+                holders_orgs['org_id'] = holders_orgs['entity_name'].map(
+                    {name: o.organization_id for name, o in org_map.items()}
+                )
+                holders_orgs_unique = holders_orgs[['ip_id', 'org_id']].drop_duplicates()
+                holder_org_relations = [(row['ip_id'], row['org_id']) 
+                                       for _, row in holders_orgs_unique.iterrows()]
+                self.progress.step(f"Подготовлено {len(holder_org_relations)} связей правообладателей-организаций")
+
+        # =====================================================================
+        # ШАГ 6.4: Массовое создание связей
+        # =====================================================================
+        if author_relations:
+            self.progress.step("Создание связей авторов")
+            ip_ids = list(set(ip_id for ip_id, _ in author_relations))
+            with self.progress.task("Удаление старых связей авторов", 
+                                   total=len(ip_ids), 
+                                   unit="ip",
+                                   mininterval=2.0) as pbar:
+                self._delete_author_relations(ip_ids, pbar)
+            
+            with self.progress.task("Создание новых связей авторов", 
+                                   total=len(author_relations), 
+                                   unit="св",
+                                   mininterval=2.0) as pbar:
+                self._create_author_relations(author_relations, pbar)
+
+        if holder_person_relations:
+            self.progress.step("Создание связей правообладателей (люди)")
+            ip_ids = list(set(ip_id for ip_id, _ in holder_person_relations))
+            with self.progress.task("Удаление старых связей", 
+                                   total=len(ip_ids), 
+                                   unit="ip",
+                                   mininterval=2.0) as pbar:
+                self._delete_holder_person_relations(ip_ids, pbar)
+            
+            with self.progress.task("Создание новых связей", 
+                                   total=len(holder_person_relations), 
+                                   unit="св",
+                                   mininterval=2.0) as pbar:
+                self._create_holder_person_relations(holder_person_relations, pbar)
+
+        if holder_org_relations:
+            self.progress.step("Создание связей правообладателей (организации)")
+            ip_ids = list(set(ip_id for ip_id, _ in holder_org_relations))
+            with self.progress.task("Удаление старых связей", 
+                                   total=len(ip_ids), 
+                                   unit="ip",
+                                   mininterval=2.0) as pbar:
+                self._delete_holder_org_relations(ip_ids, pbar)
+            
+            with self.progress.task("Создание новых связей", 
+                                   total=len(holder_org_relations), 
+                                   unit="св",
+                                   mininterval=2.0) as pbar:
+                self._create_holder_org_relations(holder_org_relations, pbar)
+
+        self.progress.success("Обработка всех связей завершена")
+
+    def _create_persons_from_dataframe(self, persons_df: pd.DataFrame, pbar) -> Dict:
+        """Создание людей из DataFrame"""
+        person_map = {}
+        all_names = persons_df['entity_name'].tolist()
+        
+        # Разбиваем имена для поиска
+        name_parts = {}
+        for name in all_names:
+            parts = name.split()
+            if len(parts) >= 2:
+                last = parts[0]
+                first = parts[1]
+                middle = parts[2] if len(parts) > 2 else ''
+                name_parts[name] = (last, first, middle)
+
+        # Строим запрос для поиска существующих
+        if name_parts:
+            query = models.Q()
+            name_to_query_key = {}  # Для обратного маппинга
+            
+            for name, (last, first, middle) in name_parts.items():
+                if middle:
+                    q = models.Q(last_name=last, first_name=first, middle_name=middle)
+                else:
+                    q = models.Q(last_name=last, first_name=first) & \
+                        (models.Q(middle_name='') | models.Q(middle_name__isnull=True))
+                query |= q
+                # Сохраняем соответствие для быстрого поиска
+                name_to_query_key[name] = (last, first, middle)
+            
+            # Ищем всех существующих людей одним запросом
+            # ИСПРАВЛЕНО: используем ceo_id вместо id
+            for person in Person.objects.filter(query).only('ceo_id', 'last_name', 'first_name', 'middle_name', 'ceo'):
+                # Проверяем каждое имя
+                for name, (last, first, middle) in name_parts.items():
+                    if (person.last_name == last and 
+                        person.first_name == first and 
+                        (not middle or person.middle_name == middle)):
+                        person_map[name] = person
+                        self.person_cache[name] = person
+                        break
+
+        # Определяем новых людей
+        new_names = [name for name in all_names if name not in person_map]
+        
+        if new_names:
+            max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
+            existing_slugs = set(Person.objects.values_list('slug', flat=True)[:100000])
+            
+            people_to_create = []
+            
+            for name in new_names:
+                parts = name.split()
+                if len(parts) >= 2:
+                    last_name = parts[0]
+                    first_name = parts[1]
+                    middle_name = parts[2] if len(parts) > 2 else ''
+                    
+                    name_parts_list = [last_name, first_name]
+                    if middle_name:
+                        name_parts_list.append(middle_name)
+                    
+                    base_slug = slugify(' '.join(name_parts_list)) or 'person'
                     unique_slug = base_slug
                     counter = 1
-                    while unique_slug in existing_slugs or any(p.slug == unique_slug for p in people_to_create):
+                    while unique_slug in existing_slugs:
                         unique_slug = f"{base_slug}-{counter}"
                         counter += 1
-
+                    existing_slugs.add(unique_slug)
+                    
                     person = Person(
-                        ceo_id=next_id,
-                        ceo=author_data['full_name'],
-                        last_name=author_data['last_name'],
-                        first_name=author_data['first_name'],
-                        middle_name=author_data['middle_name'] or '',
+                        ceo_id=max_id + len(people_to_create) + 1,
+                        ceo=name,
+                        last_name=last_name,
+                        first_name=first_name,
+                        middle_name=middle_name or '',
                         slug=unique_slug
                     )
                     people_to_create.append(person)
-                    key_to_new_person[key] = person
-                    next_id += 1
-                    existing_slugs.add(unique_slug)
-
+                    person_map[name] = person
+                    self.person_cache[name] = person
+                
                 pbar.update(1)
-                if pbar.n % 10000 == 0:
-                    pbar.set_postfix({"к созданию": len(people_to_create)})
+                
+                if pbar.n % 50000 == 0:
+                    self.progress.step(f"Обработано {pbar.n} людей")
+            
+            if people_to_create:
+                for batch in batch_iterator(people_to_create, 500):
+                    Person.objects.bulk_create(batch, batch_size=500)
 
-        self.stdout.write(f"        Новых авторов для создания: {len(people_to_create)}")
+        return person_map
 
-        # ШАГ 4: Создание новых авторов
-        if people_to_create:
-            self.stdout.write(f"        Шаг 4/6: Создание новых авторов...")
-            batch_size = 500
-            created_count = 0
-
-            with tqdm(total=len(people_to_create), desc="           Создание", unit=" чел") as pbar:
-                for i in range(0, len(people_to_create), batch_size):
-                    batch = people_to_create[i:i+batch_size]
-                    Person.objects.bulk_create(batch, batch_size=batch_size)
-                    created_count += len(batch)
-                    pbar.update(len(batch))
-                    pbar.set_postfix({"создано": created_count})
-
-            for person in people_to_create:
-                key = f"{person.last_name}|{person.first_name}|{person.middle_name}"
-                self.person_cache[key] = person
-
-        # ШАГ 5: Подготовка связей
-        self.stdout.write("        Шаг 5/6: Подготовка связей...")
-        unique_pairs = set()
-        through_objs = []
-
-        for key, info in author_to_key.items():
-            person = existing_people.get(key) or key_to_new_person.get(key)
-            if not person:
-                continue
-
-            unique_ip_objects = {ip.pk: ip for ip in info['ip_objects']}
-
-            for ip_object in unique_ip_objects.values():
-                pair = (ip_object.pk, person.pk)
-                if pair not in unique_pairs:
-                    unique_pairs.add(pair)
-                    through_objs.append(
-                        IPObject.authors.through(
-                            ipobject_id=ip_object.pk,
-                            person_id=person.pk
-                        )
-                    )
-
-        self.stdout.write(f"        Уникальных связей для создания: {len(through_objs)}")
-
-        # ШАГ 6: Создание связей
-        if through_objs:
-            self.stdout.write(f"        Шаг 6/6: Создание связей...")
-
-            # Получаем все уникальные ID IP-объектов
-            ip_ids = list(set(obj.ipobject_id for obj in through_objs))
-            self.stdout.write(f"           Удаление старых связей для {len(ip_ids)} IP-объектов...")
-
-            # Удаляем старые связи ПАЧКАМИ по 500 ID
-            delete_batch_size = 500
-            deleted_total = 0
-
-            for i in range(0, len(ip_ids), delete_batch_size):
-                batch_ip_ids = ip_ids[i:i+delete_batch_size]
-                deleted, _ = IPObject.authors.through.objects.filter(
-                    ipobject_id__in=batch_ip_ids
-                ).delete()
-                deleted_total += deleted
-
-                if (i // delete_batch_size) % 10 == 0:
-                    self.stdout.write(f"              Удалено {deleted_total} связей...")
-
-            self.stdout.write(f"           Удалено старых связей: {deleted_total}")
-
-            # Создаем новые связи пачками
-            create_batch_size = 1000
-            created_count = 0
-
-            with tqdm(total=len(through_objs), desc="           Добавление", unit=" связь") as pbar:
-                for i in range(0, len(through_objs), create_batch_size):
-                    batch = through_objs[i:i+create_batch_size]
-                    IPObject.authors.through.objects.bulk_create(batch, batch_size=create_batch_size)
-                    created_count += len(batch)
-                    pbar.update(len(batch))
-                    pbar.set_postfix({"создано": created_count})
-
-        self.stdout.write(f"        ✅ Обработка авторов завершена")
-
-    def _process_holders_batch_with_progress(self, existing_objects, holders_cache):
-        """Обработка правообладателей с прогресс-баром и разбивкой на пачки"""
-        self.stdout.write(f"     ⚡ Обработка правообладателей...")
-
-        # ШАГ 1: Сбор уникальных правообладателей
-        self.stdout.write("        Шаг 1/7: Сбор уникальных правообладателей...")
-        all_holders = set()
-        for holders_list in holders_cache.values():
-            all_holders.update(holders_list)
-
-        self.stdout.write(f"        Уникальных правообладателей: {len(all_holders)}")
-
-        # ШАГ 2: Определение типов
-        self.stdout.write("        Шаг 2/7: Определение типов...")
-        person_holders = []
-        org_holders = []
-
-        with tqdm(total=len(all_holders), desc="           Анализ", unit=" об") as pbar:
-            for holder in all_holders:
-                if self.type_detector.detect_type(holder) == 'person':
-                    person_holders.append(holder)
-                else:
-                    org_holders.append(holder)
-                pbar.update(1)
-
-        self.stdout.write(f"        Люди: {len(person_holders)}, Организации: {len(org_holders)}")
-
-        # ШАГ 3: Обработка организаций (ЧАСТЯМИ)
-        self.stdout.write("        Шаг 3/7: Обработка организаций...")
+    def _create_organizations_from_dataframe(self, orgs_df: pd.DataFrame, pbar) -> Dict:
+        """Создание организаций из DataFrame"""
         org_map = {}
+        all_names = orgs_df['entity_name'].tolist()
+        
+        # Поиск существующих организаций
+        existing_orgs = {}
+        for org in Organization.objects.filter(name__in=all_names).only('organization_id', 'name'):
+            existing_orgs[org.name] = org
+            self.organization_cache[org.name] = org
 
-        if org_holders:
-            CHUNK_SIZE = 1000
-            total_orgs = len(org_holders)
-
-            self.stdout.write(f"        Обработка {total_orgs} организаций частями по {CHUNK_SIZE}...")
-
-            for chunk_start in range(0, total_orgs, CHUNK_SIZE):
-                chunk_end = min(chunk_start + CHUNK_SIZE, total_orgs)
-                chunk_holders = org_holders[chunk_start:chunk_end]
-
-                # Поиск существующих в этой части
-                existing_orgs = {}
-                for org in Organization.objects.filter(name__in=chunk_holders):
-                    existing_orgs[org.name] = org
-                    self.organization_cache[org.name] = org
-
-                # Создание новых в этой части
-                orgs_to_create = []
-                for holder in chunk_holders:
-                    if holder not in existing_orgs and holder not in self.organization_cache:
-                        max_id = Organization.objects.aggregate(models.Max('organization_id'))['organization_id__max'] or 0
-                        new_id = max_id + len(orgs_to_create) + 1
-
-                        base_slug = slugify(holder[:50])
-                        if not base_slug:
-                            base_slug = 'organization'
-
-                        unique_slug = base_slug
-                        counter = 1
-                        while Organization.objects.filter(slug=unique_slug).exists() or any(o.slug == unique_slug for o in orgs_to_create):
-                            unique_slug = f"{base_slug}-{counter}"
-                            counter += 1
-
-                        org = Organization(
-                            organization_id=new_id,
-                            name=holder,
-                            full_name=holder,
-                            short_name=holder[:500] if len(holder) > 500 else holder,
-                            slug=unique_slug,
-                            register_opk=False,
-                            strategic=False,
-                        )
-                        orgs_to_create.append(org)
-                        self.organization_cache[holder] = org
-
-                # Мгновенно создаем в БД
-                if orgs_to_create:
-                    batch_size = 500
-                    for i in range(0, len(orgs_to_create), batch_size):
-                        batch = orgs_to_create[i:i+batch_size]
-                        Organization.objects.bulk_create(batch, batch_size=batch_size)
-
-                # Освобождаем память
-                del existing_orgs
-                del orgs_to_create
-
-                progress = (chunk_end / total_orgs) * 100
-                self.stdout.write(f"           Прогресс: {progress:.1f}%")
-
-            # Финальный маппинг
-            for holder in org_holders:
-                org_map[holder] = self.organization_cache.get(holder)
-
-        # ШАГ 4: Обработка людей (ЧАСТЯМИ)
-        self.stdout.write("        Шаг 4/7: Обработка людей...")
-        person_map = {}
-
-        if person_holders:
-            CHUNK_SIZE = 500
-            total_people = len(person_holders)
-
-            self.stdout.write(f"        Обработка {total_people} людей частями по {CHUNK_SIZE}...")
-
-            for chunk_start in range(0, total_people, CHUNK_SIZE):
-                chunk_end = min(chunk_start + CHUNK_SIZE, total_people)
-                chunk_holders = person_holders[chunk_start:chunk_end]
-
-                # Поиск существующих
-                existing_people = {}
-                for holder in chunk_holders:
-                    parts = holder.split()
-                    if len(parts) >= 2:
-                        last_name = parts[0]
-                        first_name = parts[1]
-                        middle_name = parts[2] if len(parts) > 2 else ''
-
-                        persons = Person.objects.filter(
-                            last_name=last_name,
-                            first_name=first_name
-                        )
-                        if middle_name:
-                            persons = persons.filter(middle_name=middle_name)
-
-                        person = persons.first()
-                        if person:
-                            existing_people[holder] = person
-                            self.person_cache[holder] = person
-
-                # Создание новых
-                people_to_create = []
-                for holder in chunk_holders:
-                    if holder not in existing_people and holder not in self.person_cache:
-                        parts = holder.split()
-                        if len(parts) >= 2:
-                            last_name = parts[0]
-                            first_name = parts[1]
-                            middle_name = parts[2] if len(parts) > 2 else ''
-
-                            name_parts = [last_name, first_name]
-                            if middle_name:
-                                name_parts.append(middle_name)
-
-                            base_slug = slugify(' '.join(name_parts))
-                            if not base_slug:
-                                base_slug = 'person'
-
-                            unique_slug = base_slug
-                            counter = 1
-                            while Person.objects.filter(slug=unique_slug).exists() or any(p.slug == unique_slug for p in people_to_create):
-                                unique_slug = f"{base_slug}-{counter}"
-                                counter += 1
-
-                            max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
-                            new_id = max_id + len(people_to_create) + 1
-
-                            person = Person(
-                                ceo_id=new_id,
-                                ceo=holder,
-                                last_name=last_name,
-                                first_name=first_name,
-                                middle_name=middle_name or '',
-                                slug=unique_slug
-                            )
-                            people_to_create.append(person)
-                            self.person_cache[holder] = person
-
-                # Мгновенно создаем в БД
-                if people_to_create:
-                    batch_size = 500
-                    for i in range(0, len(people_to_create), batch_size):
-                        batch = people_to_create[i:i+batch_size]
-                        Person.objects.bulk_create(batch, batch_size=batch_size)
-
-                # Освобождаем память
-                del existing_people
-                del people_to_create
-
-                progress = (chunk_end / total_people) * 100
-                self.stdout.write(f"           Прогресс: {progress:.1f}%")
-
-            # Финальный маппинг
-            for holder in person_holders:
-                person_map[holder] = self.person_cache.get(holder)
-
-        # ШАГ 5: Подготовка связей
-        self.stdout.write("        Шаг 5/7: Подготовка связей...")
-
-        org_relations = set()
-        person_relations = set()
-
-        with tqdm(total=sum(len(h) for h in holders_cache.values()), desc="           Сбор связей", unit=" св") as pbar:
-            for reg_num, holders_list in holders_cache.items():
-                ip_object = existing_objects.get(reg_num)
-                if not ip_object:
-                    continue
-
-                for holder in holders_list:
-                    if holder in org_map and org_map[holder]:
-                        org_relations.add((ip_object.pk, org_map[holder].pk))
-                    elif holder in person_map and person_map[holder]:
-                        person_relations.add((ip_object.pk, person_map[holder].pk))
-                    pbar.update(1)
-
-        self.stdout.write(f"        Уникальных связей с организациями: {len(org_relations)}")
-        self.stdout.write(f"        Уникальных связей с людьми: {len(person_relations)}")
-
-        # ШАГ 6: Создание связей с организациями
-        if org_relations:
-            self.stdout.write("        Шаг 6/7: Создание связей с организациями...")
-
-            ip_ids = list(set(ip_id for ip_id, _ in org_relations))
-
-            # Удаляем старые связи ПАЧКАМИ
-            delete_batch_size = 500
-            deleted_total = 0
-            for i in range(0, len(ip_ids), delete_batch_size):
-                batch_ip_ids = ip_ids[i:i+delete_batch_size]
-                deleted, _ = IPObject.owner_organizations.through.objects.filter(
-                    ipobject_id__in=batch_ip_ids
-                ).delete()
-                deleted_total += deleted
-                if (i // delete_batch_size) % 10 == 0:
-                    self.stdout.write(f"              Удалено {deleted_total} связей с организациями...")
-
-            self.stdout.write(f"           Удалено старых связей: {deleted_total}")
-
-            # Создаем новые связи пачками
-            through_objs = [
-                IPObject.owner_organizations.through(
-                    ipobject_id=ip_id,
-                    organization_id=org_id
+        new_names = [name for name in all_names if name not in existing_orgs]
+        
+        if new_names:
+            max_id = Organization.objects.aggregate(models.Max('organization_id'))['organization_id__max'] or 0
+            existing_slugs = set(Organization.objects.values_list('slug', flat=True)[:50000])
+            
+            orgs_to_create = []
+            
+            for name in new_names:
+                base_slug = slugify(name[:50]) or 'organization'
+                unique_slug = base_slug
+                counter = 1
+                while unique_slug in existing_slugs:
+                    unique_slug = f"{base_slug}-{counter}"
+                    counter += 1
+                existing_slugs.add(unique_slug)
+                
+                org = Organization(
+                    organization_id=max_id + len(orgs_to_create) + 1,
+                    name=name,
+                    full_name=name,
+                    short_name=name[:500] if len(name) > 500 else name,
+                    slug=unique_slug,
+                    register_opk=False,
+                    strategic=False,
                 )
-                for ip_id, org_id in org_relations
+                orgs_to_create.append(org)
+                
+                pbar.update(1)
+                
+                if pbar.n % 10000 == 0:
+                    self.progress.step(f"Обработано {pbar.n} организаций")
+            
+            if orgs_to_create:
+                for batch in batch_iterator(orgs_to_create, 500):
+                    Organization.objects.bulk_create(batch, batch_size=500)
+
+        for name in all_names:
+            if name in existing_orgs:
+                org_map[name] = existing_orgs[name]
+            elif name in self.organization_cache:
+                org_map[name] = self.organization_cache[name]
+
+        return org_map
+
+    def _delete_author_relations(self, ip_ids: List[int], pbar):
+        """Удаление связей авторов"""
+        delete_batch_size = 500
+        for i in range(0, len(ip_ids), delete_batch_size):
+            batch_ids = ip_ids[i:i+delete_batch_size]
+            IPObject.authors.through.objects.filter(
+                ipobject_id__in=batch_ids
+            ).delete()
+            pbar.update(len(batch_ids))
+
+    def _delete_holder_person_relations(self, ip_ids: List[int], pbar):
+        """Удаление связей правообладателей-людей"""
+        delete_batch_size = 500
+        for i in range(0, len(ip_ids), delete_batch_size):
+            batch_ids = ip_ids[i:i+delete_batch_size]
+            IPObject.owner_persons.through.objects.filter(
+                ipobject_id__in=batch_ids
+            ).delete()
+            pbar.update(len(batch_ids))
+
+    def _delete_holder_org_relations(self, ip_ids: List[int], pbar):
+        """Удаление связей правообладателей-организаций"""
+        delete_batch_size = 500
+        for i in range(0, len(ip_ids), delete_batch_size):
+            batch_ids = ip_ids[i:i+delete_batch_size]
+            IPObject.owner_organizations.through.objects.filter(
+                ipobject_id__in=batch_ids
+            ).delete()
+            pbar.update(len(batch_ids))
+
+    def _create_author_relations(self, relations: List[Tuple[int, int]], pbar):
+        """Создание связей авторов"""
+        create_batch_size = 2000
+        for batch in batch_iterator(relations, create_batch_size):
+            through_objs = [
+                IPObject.authors.through(
+                    ipobject_id=ip_id,
+                    person_id=person_id
+                )
+                for ip_id, person_id in batch
             ]
+            IPObject.authors.through.objects.bulk_create(
+                through_objs, batch_size=2000, ignore_conflicts=True
+            )
+            pbar.update(len(batch))
 
-            create_batch_size = 1000
-            created_count = 0
-            with tqdm(total=len(through_objs), desc="           Добавление", unit=" св") as pbar:
-                for i in range(0, len(through_objs), create_batch_size):
-                    batch = through_objs[i:i+create_batch_size]
-                    IPObject.owner_organizations.through.objects.bulk_create(batch, batch_size=create_batch_size)
-                    created_count += len(batch)
-                    pbar.update(len(batch))
-
-        # ШАГ 7: Создание связей с людьми
-        if person_relations:
-            self.stdout.write("        Шаг 7/7: Создание связей с людьми...")
-
-            ip_ids = list(set(ip_id for ip_id, _ in person_relations))
-
-            # Удаляем старые связи ПАЧКАМИ
-            delete_batch_size = 500
-            deleted_total = 0
-            for i in range(0, len(ip_ids), delete_batch_size):
-                batch_ip_ids = ip_ids[i:i+delete_batch_size]
-                deleted, _ = IPObject.owner_persons.through.objects.filter(
-                    ipobject_id__in=batch_ip_ids
-                ).delete()
-                deleted_total += deleted
-                if (i // delete_batch_size) % 10 == 0:
-                    self.stdout.write(f"              Удалено {deleted_total} связей с людьми...")
-
-            self.stdout.write(f"           Удалено старых связей: {deleted_total}")
-
-            # Создаем новые связи пачками
+    def _create_holder_person_relations(self, relations: List[Tuple[int, int]], pbar):
+        """Создание связей правообладателей-людей"""
+        create_batch_size = 2000
+        for batch in batch_iterator(relations, create_batch_size):
             through_objs = [
                 IPObject.owner_persons.through(
                     ipobject_id=ip_id,
                     person_id=person_id
                 )
-                for ip_id, person_id in person_relations
+                for ip_id, person_id in batch
             ]
+            IPObject.owner_persons.through.objects.bulk_create(
+                through_objs, batch_size=2000, ignore_conflicts=True
+            )
+            pbar.update(len(batch))
 
-            create_batch_size = 1000
-            created_count = 0
-            with tqdm(total=len(through_objs), desc="           Добавление", unit=" св") as pbar:
-                for i in range(0, len(through_objs), create_batch_size):
-                    batch = through_objs[i:i+create_batch_size]
-                    IPObject.owner_persons.through.objects.bulk_create(batch, batch_size=create_batch_size)
-                    created_count += len(batch)
-                    pbar.update(len(batch))
-
-        self.stdout.write(f"        ✅ Обработка правообладателей завершена")
+    def _create_holder_org_relations(self, relations: List[Tuple[int, int]], pbar):
+        """Создание связей правообладателей-организаций"""
+        create_batch_size = 2000
+        for batch in batch_iterator(relations, create_batch_size):
+            through_objs = [
+                IPObject.owner_organizations.through(
+                    ipobject_id=ip_id,
+                    organization_id=org_id
+                )
+                for ip_id, org_id in batch
+            ]
+            IPObject.owner_organizations.through.objects.bulk_create(
+                through_objs, batch_size=2000, ignore_conflicts=True
+            )
+            pbar.update(len(batch))
