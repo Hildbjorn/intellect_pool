@@ -159,53 +159,6 @@ class Command(BaseCommand):
         except:
             return None
 
-    # ============== НОВЫЙ МЕТОД ==============
-    def get_years_from_catalogue(self, catalogue):
-        """
-        Определяет список годов, присутствующих в CSV файле каталога
-        С подробным отладочным выводом
-        """
-        df = self.load_csv(catalogue)
-        if df is None or df.empty:
-            self.stdout.write(self.style.WARNING("  ⚠️ Не удалось загрузить CSV для определения годов"))
-            return []
-        
-        if 'registration date' not in df.columns:
-            self.stdout.write(self.style.WARNING("  ⚠️ Колонка 'registration date' не найдена, не могу определить годы"))
-            return []
-        
-        # Извлекаем годы
-        df['_year'] = df['registration date'].apply(self.extract_year_from_date)
-        all_years = sorted(df['_year'].dropna().unique().astype(int).tolist())
-        
-        if not all_years:
-            self.stdout.write(self.style.WARNING("  ⚠️ Не удалось извлечь годы из дат"))
-            return []
-        
-        # Подробный отладочный вывод
-        self.stdout.write(f"  📊 Все годы в каталоге: {all_years[0]} - {all_years[-1]} (всего {len(all_years)} лет)")
-        
-        # Показываем первые и последние годы для наглядности
-        if len(all_years) > 20:
-            self.stdout.write(f"     Первые 10 лет: {all_years[:10]}")
-            self.stdout.write(f"     Последние 10 лет: {all_years[-10:]}")
-        else:
-            self.stdout.write(f"     Все годы: {all_years}")
-        
-        # Применяем фильтр по минимальному году
-        if self.min_year and not self.skip_filters:
-            years = [y for y in all_years if y >= self.min_year]
-            if years:
-                self.stdout.write(f"  🔍 После фильтрации (min_year={self.min_year}): {years[0]} - {years[-1]} (всего {len(years)} лет)")
-            else:
-                self.stdout.write(f"  🔍 После фильтрации (min_year={self.min_year}): нет данных")
-            return years
-        else:
-            # Если skip_filters=True или min_year не задан, возвращаем все годы
-            if self.skip_filters:
-                self.stdout.write(f"  🔍 Фильтрация отключена (--skip-filters), обрабатываются все годы")
-            return all_years
-
     def get_years_from_catalogue(self, catalogue):
         """
         Определяет список годов, присутствующих в CSV файле каталога
@@ -221,18 +174,42 @@ class Command(BaseCommand):
             return []
         
         df['_year'] = df['registration date'].apply(self.extract_year_from_date)
-        years = sorted(df['_year'].dropna().unique().astype(int).tolist())
+        all_years = sorted(df['_year'].dropna().unique().astype(int).tolist())
         
-        # Применяем фильтр по годам
-        if self.min_year:
-            years = [y for y in years if y >= self.min_year]
-        if self.max_year:
+        if not all_years:
+            self.stdout.write(self.style.WARNING("  ⚠️ Не удалось извлечь годы из дат"))
+            return []
+        
+        # Подробный отладочный вывод
+        self.stdout.write(f"  📊 Все годы в каталоге: {all_years[0]} - {all_years[-1]} (всего {len(all_years)} лет)")
+        
+        if len(all_years) > 20:
+            self.stdout.write(f"     Первые 10 лет: {all_years[:10]}")
+            self.stdout.write(f"     Последние 10 лет: {all_years[-10:]}")
+        else:
+            self.stdout.write(f"     Все годы: {all_years}")
+        
+        # ЕСЛИ УКАЗАН --skip-filters - ВОЗВРАЩАЕМ ВСЕ ГОДЫ БЕЗ ФИЛЬТРАЦИИ!
+        if self.skip_filters:
+            self.stdout.write(f"  🔍 Фильтрация отключена (--skip-filters), обрабатываются все годы")
+            return all_years
+        
+        # Применяем фильтр по минимальному году (ТОЛЬКО если не skip_filters)
+        years = all_years
+        if self.min_year is not None:
+            years = [y for y in all_years if y >= self.min_year]
+            self.stdout.write(f"  🔍 После фильтрации по min_year={self.min_year}: {years[0] if years else 'нет'} - {years[-1] if years else 'нет'} (всего {len(years)} лет)")
+        
+        # Применяем фильтр по максимальному году
+        if self.max_year is not None:
             years = [y for y in years if y <= self.max_year]
+            self.stdout.write(f"  🔍 После фильтрации по max_year={self.max_year}: {years[0] if years else 'нет'} - {years[-1] if years else 'нет'} (всего {len(years)} лет)")
         
         # Применяем начальный год, если указан
         if self.start_year and self.start_year in years:
             start_idx = years.index(self.start_year)
             years = years[start_idx:]
+            self.stdout.write(f"  🔍 Начинаем с {self.start_year}: {years[0]} - {years[-1]} (всего {len(years)} лет)")
         
         return years
 
@@ -335,7 +312,7 @@ class Command(BaseCommand):
 
     def _process_catalogue_by_year(self, catalogue, parser, stats):
         """Обработка каталога с разбивкой по годам"""
-        # Получаем список годов
+        # Получаем список годов - теперь с учетом skip_filters!
         years = self.get_years_from_catalogue(catalogue)
         
         if not years:
@@ -345,7 +322,7 @@ class Command(BaseCommand):
             return self._process_catalogue_normal(catalogue, parser, stats)
         
         self.stdout.write(self.style.SUCCESS(
-            f"\n  📅 Найдены годы в каталоге: {years[0]} - {years[-1]} (всего {len(years)} лет)"
+            f"\n  📅 Будет обработано {len(years)} лет: {years[0]} - {years[-1]}"
         ))
         
         # Загружаем полный DataFrame один раз
@@ -374,7 +351,8 @@ class Command(BaseCommand):
             # Фильтруем DataFrame для текущего года
             year_df = full_df[full_df['_year'] == year].copy()
             
-            if self.only_active:
+            # Применяем фильтр по активности (actual) если нужно
+            if self.only_active and not self.skip_filters:
                 year_df = filter_by_actual(year_df, self.stdout)
             
             if year_df.empty:
@@ -395,9 +373,9 @@ class Command(BaseCommand):
                 stats['errors'] += year_stats.get('errors', 0)
                 
                 self.stdout.write(f"     Результаты года {year}: "
-                                 f"создано={year_stats.get('created', 0)}, "
-                                 f"обновлено={year_stats.get('updated', 0)}, "
-                                 f"без изменений={year_stats.get('unchanged', 0)}")
+                                f"создано={year_stats.get('created', 0)}, "
+                                f"обновлено={year_stats.get('updated', 0)}, "
+                                f"без изменений={year_stats.get('unchanged', 0)}")
                 
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"  ❌ Ошибка при парсинге года {year}: {e}"))
