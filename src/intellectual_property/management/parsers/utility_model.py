@@ -481,7 +481,7 @@ class UtilityModelParser(BaseFIPSParser):
         """
         Пакетное создание людей из DataFrame с индикацией прогресса
         Всегда возвращает словарь (даже пустой)
-        Исправлена проблема с дублированием ceo_id
+        Исправлена проблема с дублированием ceo_id при повторных запусках
         """
         person_map = {}
         
@@ -518,10 +518,6 @@ class UtilityModelParser(BaseFIPSParser):
         found_count = 0
         batch_size = 100
         all_names_list = list(name_to_parts.keys())
-        
-        # Получаем максимальный ceo_id один раз в начале
-        max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
-        next_id = max_id + 1
         
         for i in range(0, len(all_names_list), batch_size):
             batch_names = all_names_list[i:i+batch_size]
@@ -562,6 +558,7 @@ class UtilityModelParser(BaseFIPSParser):
         
         self.stdout.write(f"      Найдено существующих: {found_count}")
 
+        # Определяем новых людей
         new_names = [name for name in valid_names if name not in existing_persons]
         new_count = len(new_names)
         
@@ -570,10 +567,16 @@ class UtilityModelParser(BaseFIPSParser):
         if new_names:
             self.stdout.write(f"      Подготовка данных для создания...")
             
+            # ПОЛУЧАЕМ АКТУАЛЬНЫЙ MAX_ID ПРЯМО СЕЙЧАС
+            max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
+            next_id = max_id + 1
+            self.stdout.write(f"         Начальный ID: {next_id}")
+            
             # Получаем существующие slugs
             existing_slugs = set(Person.objects.values_list('slug', flat=True)[:100000])
             
             people_to_create = []
+            created_count = 0
             
             for idx, name in enumerate(new_names):
                 if pd.isna(name) or not name:
@@ -612,22 +615,39 @@ class UtilityModelParser(BaseFIPSParser):
             if people_to_create:
                 self.stdout.write(f"      Создание людей пачками по 500...")
                 
-                batch_size = 500
-                created_count = 0
+                BATCH_SIZE = 500
                 
                 # Разбиваем на пачки и создаем
-                for i in range(0, len(people_to_create), batch_size):
-                    batch = people_to_create[i:i+batch_size]
+                for i in range(0, len(people_to_create), BATCH_SIZE):
+                    batch = people_to_create[i:i+BATCH_SIZE]
+                    
+                    # ПРОВЕРЯЕМ, НЕТ ЛИ УЖЕ ТАКИХ ЛЮДЕЙ (на всякий случай)
+                    batch_names = [p.ceo for p in batch]
+                    existing_in_batch = Person.objects.filter(ceo__in=batch_names).values_list('ceo', flat=True)
+                    
+                    if existing_in_batch:
+                        self.stdout.write(self.style.WARNING(f"         Найдены дубликаты в пачке: {list(existing_in_batch)}"))
+                        # Фильтруем batch, убирая существующих
+                        batch = [p for p in batch if p.ceo not in existing_in_batch]
+                    
+                    if not batch:
+                        continue
+                    
                     try:
-                        Person.objects.bulk_create(batch, batch_size=batch_size, ignore_conflicts=False)
+                        # Пробуем создать пачкой
+                        Person.objects.bulk_create(batch, batch_size=BATCH_SIZE, ignore_conflicts=False)
                         created_count += len(batch)
                     except Exception as e:
                         self.stdout.write(self.style.WARNING(f"         Ошибка при создании пачки: {e}"))
                         # Если пачка не создалась, пробуем по одному
                         for person in batch:
                             try:
-                                person.save()
-                                created_count += 1
+                                # Проверяем еще раз перед созданием
+                                if not Person.objects.filter(ceo=person.ceo).exists():
+                                    person.save()
+                                    created_count += 1
+                                else:
+                                    self.stdout.write(self.style.WARNING(f"            Пропущен (уже существует): {person.ceo}"))
                             except Exception as e2:
                                 self.stdout.write(self.style.WARNING(f"            Не удалось создать {person.ceo}: {e2}"))
                     
@@ -638,7 +658,7 @@ class UtilityModelParser(BaseFIPSParser):
                 self.stdout.write(f"      Получение созданных людей для маппинга...")
                 
                 # Получаем созданных людей
-                created_names = [p.ceo for p in people_to_create]
+                created_names = [p.ceo for p in people_to_create[:created_count]]
                 for batch in batch_iterator(created_names, 1000):
                     for person in Person.objects.filter(ceo__in=batch):
                         person_map[person.ceo] = person
