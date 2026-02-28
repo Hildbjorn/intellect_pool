@@ -478,8 +478,18 @@ class UtilityModelParser(BaseFIPSParser):
         self.stdout.write(self.style.SUCCESS("   ✅ Обработка всех связей завершена"))
 
     def _create_persons_bulk(self, persons_df: pd.DataFrame) -> Dict:
-        """Пакетное создание людей из DataFrame с индикацией прогресса"""
+        """
+        Пакетное создание людей из DataFrame с индикацией прогресса
+        Всегда возвращает словарь (даже пустой)
+        Исправлена проблема с дублированием ceo_id
+        """
         person_map = {}
+        
+        # Если DataFrame пустой, сразу возвращаем пустой словарь
+        if persons_df.empty:
+            self.stdout.write("      Нет людей для обработки")
+            return person_map
+        
         all_names = persons_df['entity_name'].tolist()
         total_names = len(all_names)
         
@@ -489,7 +499,14 @@ class UtilityModelParser(BaseFIPSParser):
         self.stdout.write(f"      Поиск существующих людей в БД...")
         
         name_to_parts = {}
+        valid_names = []
         for name in all_names:
+            if pd.isna(name) or not name:
+                continue
+            name = str(name).strip()
+            if not name:
+                continue
+            valid_names.append(name)
             parts = name.split()
             if len(parts) >= 2:
                 last = parts[0]
@@ -501,6 +518,10 @@ class UtilityModelParser(BaseFIPSParser):
         found_count = 0
         batch_size = 100
         all_names_list = list(name_to_parts.keys())
+        
+        # Получаем максимальный ceo_id один раз в начале
+        max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
+        next_id = max_id + 1
         
         for i in range(0, len(all_names_list), batch_size):
             batch_names = all_names_list[i:i+batch_size]
@@ -541,7 +562,7 @@ class UtilityModelParser(BaseFIPSParser):
         
         self.stdout.write(f"      Найдено существующих: {found_count}")
 
-        new_names = [name for name in all_names if name not in existing_persons]
+        new_names = [name for name in valid_names if name not in existing_persons]
         new_count = len(new_names)
         
         self.stdout.write(f"      Новых людей для создания: {new_count}")
@@ -549,13 +570,18 @@ class UtilityModelParser(BaseFIPSParser):
         if new_names:
             self.stdout.write(f"      Подготовка данных для создания...")
             
-            max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
+            # Получаем существующие slugs
             existing_slugs = set(Person.objects.values_list('slug', flat=True)[:100000])
             
             people_to_create = []
             
-            for name in new_names:
+            for idx, name in enumerate(new_names):
+                if pd.isna(name) or not name:
+                    continue
+                
+                name = str(name).strip()
                 parts = name.split()
+                
                 if len(parts) >= 2:
                     last_name = parts[0]
                     first_name = parts[1]
@@ -574,7 +600,7 @@ class UtilityModelParser(BaseFIPSParser):
                     existing_slugs.add(unique_slug)
                     
                     person = Person(
-                        ceo_id=max_id + len(people_to_create) + 1,
+                        ceo_id=next_id + idx,  # Используем последовательные ID
                         ceo=name,
                         last_name=last_name,
                         first_name=first_name,
@@ -583,58 +609,100 @@ class UtilityModelParser(BaseFIPSParser):
                     )
                     people_to_create.append(person)
             
-            self.stdout.write(f"      Создание людей пачками по 500...")
-            
-            batch_size = 500
-            created_count = 0
-            
-            for batch in batch_iterator(people_to_create, batch_size):
-                Person.objects.bulk_create(batch, batch_size=batch_size)
-                created_count += len(batch)
+            if people_to_create:
+                self.stdout.write(f"      Создание людей пачками по 500...")
                 
-                if created_count % 5000 == 0 or created_count == new_count:
-                    percent = (created_count / new_count) * 100
-                    self.stdout.write(f"         Создано {created_count}/{new_count} ({percent:.1f}%)")
-            
-            self.stdout.write(f"      Получение созданных людей для маппинга...")
-            
-            created_names = [p.ceo for p in people_to_create]
-            for batch in batch_iterator(created_names, 1000):
-                for person in Person.objects.filter(ceo__in=batch):
-                    person_map[person.ceo] = person
-                    self.person_cache[person.ceo] = person
+                batch_size = 500
+                created_count = 0
+                
+                # Разбиваем на пачки и создаем
+                for i in range(0, len(people_to_create), batch_size):
+                    batch = people_to_create[i:i+batch_size]
+                    try:
+                        Person.objects.bulk_create(batch, batch_size=batch_size, ignore_conflicts=False)
+                        created_count += len(batch)
+                    except Exception as e:
+                        self.stdout.write(self.style.WARNING(f"         Ошибка при создании пачки: {e}"))
+                        # Если пачка не создалась, пробуем по одному
+                        for person in batch:
+                            try:
+                                person.save()
+                                created_count += 1
+                            except Exception as e2:
+                                self.stdout.write(self.style.WARNING(f"            Не удалось создать {person.ceo}: {e2}"))
+                    
+                    if created_count % 5000 == 0 or created_count >= new_count:
+                        percent = (created_count / new_count) * 100 if new_count > 0 else 0
+                        self.stdout.write(f"         Создано {created_count}/{new_count} ({percent:.1f}%)")
+                
+                self.stdout.write(f"      Получение созданных людей для маппинга...")
+                
+                # Получаем созданных людей
+                created_names = [p.ceo for p in people_to_create]
+                for batch in batch_iterator(created_names, 1000):
+                    for person in Person.objects.filter(ceo__in=batch):
+                        person_map[person.ceo] = person
+                        self.person_cache[person.ceo] = person
 
+        # Добавляем существующих людей в маппинг
         person_map.update(existing_persons)
+        
         self.stdout.write(f"      ✅ Обработано людей: {len(person_map)}")
         
         return person_map
 
     def _create_organizations_bulk(self, orgs_df: pd.DataFrame) -> Dict:
-        """Пакетное создание организаций из DataFrame с индикацией прогресса"""
+        """
+        Пакетное создание организаций из DataFrame с индикацией прогресса
+        Всегда возвращает словарь (даже пустой)
+        Исправлена проблема с дублированием ID
+        """
         org_map = {}
+        
+        # Если DataFrame пустой, сразу возвращаем пустой словарь
+        if orgs_df.empty:
+            self.stdout.write("      Нет организаций для обработки")
+            return org_map
+        
         all_names = orgs_df['entity_name'].tolist()
         total_names = len(all_names)
         
         self.stdout.write(f"      Всего уникальных организаций для обработки: {total_names}")
         
+        # ШАГ 1: Поиск существующих организаций (пачками)
         self.stdout.write(f"      Поиск существующих организаций в БД...")
         
         existing_orgs = {}
         batch_size = 100
+        valid_names = []
         
         for i in range(0, len(all_names), batch_size):
             batch_names = all_names[i:i+batch_size]
+            clean_batch = []
             
-            for org in Organization.objects.filter(name__in=batch_names).only('organization_id', 'name'):
-                existing_orgs[org.name] = org
-                self.organization_cache[org.name] = org
+            for name in batch_names:
+                if pd.isna(name) or not name:
+                    continue
+                clean_name = str(name).strip()
+                if clean_name:
+                    clean_batch.append(clean_name)
+                    valid_names.append(clean_name)
+            
+            if clean_batch:
+                for org in Organization.objects.filter(name__in=clean_batch).only('organization_id', 'name'):
+                    existing_orgs[org.name] = org
+                    self.organization_cache[org.name] = org
             
             if (i + len(batch_names)) % 500 == 0 or (i + len(batch_names)) >= len(all_names):
-                self.stdout.write(f"         Обработано {i + len(batch_names)}/{len(all_names)} названий")
+                self.stdout.write(f"         Обработано {min(i + len(batch_names), len(all_names))}/{len(all_names)} названий")
         
         self.stdout.write(f"      Найдено существующих: {len(existing_orgs)}")
 
-        new_names = [name for name in all_names if name not in existing_orgs]
+        # Получаем максимальный organization_id
+        max_id = Organization.objects.aggregate(models.Max('organization_id'))['organization_id__max'] or 0
+        next_id = max_id + 1
+        
+        new_names = [name for name in valid_names if name not in existing_orgs]
         new_count = len(new_names)
         
         self.stdout.write(f"      Новых организаций для создания: {new_count}")
@@ -642,12 +710,15 @@ class UtilityModelParser(BaseFIPSParser):
         if new_names:
             self.stdout.write(f"      Подготовка данных для создания...")
             
-            max_id = Organization.objects.aggregate(models.Max('organization_id'))['organization_id__max'] or 0
             existing_slugs = set(Organization.objects.values_list('slug', flat=True)[:50000])
             
             orgs_to_create = []
             
-            for name in new_names:
+            for idx, name in enumerate(new_names):
+                if pd.isna(name) or not name:
+                    continue
+                name = str(name).strip()
+                
                 base_slug = slugify(name[:50]) or 'organization'
                 unique_slug = base_slug
                 counter = 1
@@ -657,7 +728,7 @@ class UtilityModelParser(BaseFIPSParser):
                 existing_slugs.add(unique_slug)
                 
                 org = Organization(
-                    organization_id=max_id + len(orgs_to_create) + 1,
+                    organization_id=next_id + idx,  # Используем последовательные ID
                     name=name,
                     full_name=name,
                     short_name=name[:500] if len(name) > 500 else name,
@@ -667,26 +738,38 @@ class UtilityModelParser(BaseFIPSParser):
                 )
                 orgs_to_create.append(org)
             
-            self.stdout.write(f"      Создание организаций пачками по 500...")
-            
-            batch_size = 500
-            created_count = 0
-            
-            for batch in batch_iterator(orgs_to_create, batch_size):
-                Organization.objects.bulk_create(batch, batch_size=batch_size)
-                created_count += len(batch)
+            if orgs_to_create:
+                self.stdout.write(f"      Создание организаций пачками по 500...")
                 
-                if created_count % 5000 == 0 or created_count == new_count:
-                    percent = (created_count / new_count) * 100
-                    self.stdout.write(f"         Создано {created_count}/{new_count} ({percent:.1f}%)")
-            
-            self.stdout.write(f"      Получение созданных организаций для маппинга...")
-            
-            created_names = [o.name for o in orgs_to_create]
-            for batch in batch_iterator(created_names, 1000):
-                for org in Organization.objects.filter(name__in=batch):
-                    org_map[org.name] = org
-                    self.organization_cache[org.name] = org
+                batch_size = 500
+                created_count = 0
+                
+                for i in range(0, len(orgs_to_create), batch_size):
+                    batch = orgs_to_create[i:i+batch_size]
+                    try:
+                        Organization.objects.bulk_create(batch, batch_size=batch_size, ignore_conflicts=False)
+                        created_count += len(batch)
+                    except Exception as e:
+                        self.stdout.write(self.style.WARNING(f"         Ошибка при создании пачки: {e}"))
+                        # Если пачка не создалась, пробуем по одному
+                        for org in batch:
+                            try:
+                                org.save()
+                                created_count += 1
+                            except Exception as e2:
+                                self.stdout.write(self.style.WARNING(f"            Не удалось создать {org.name}: {e2}"))
+                    
+                    if created_count % 5000 == 0 or created_count >= new_count:
+                        percent = (created_count / new_count) * 100 if new_count > 0 else 0
+                        self.stdout.write(f"         Создано {created_count}/{new_count} ({percent:.1f}%)")
+                
+                self.stdout.write(f"      Получение созданных организаций для маппинга...")
+                
+                created_names = [o.name for o in orgs_to_create]
+                for batch in batch_iterator(created_names, 1000):
+                    for org in Organization.objects.filter(name__in=batch):
+                        org_map[org.name] = org
+                        self.organization_cache[org.name] = org
 
         org_map.update(existing_orgs)
         self.stdout.write(f"      ✅ Обработано организаций: {len(org_map)}")
