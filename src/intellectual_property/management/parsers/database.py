@@ -14,7 +14,7 @@ from django.utils.text import slugify
 from tqdm import tqdm
 
 from intellectual_property.models import IPObject, IPType, Person
-from core.models import Organization
+from core.models import Organization, DBMS
 
 from .base import BaseFIPSParser
 from ..utils.progress import batch_iterator
@@ -134,6 +134,8 @@ class DatabaseParser(BaseFIPSParser):
         error_reg_numbers = []
 
         relations_data = []
+        # Данные для СУБД
+        dbms_data = []
         
         with tqdm(total=len(reg_num_to_row), desc="Подготовка данных IPObject", unit="зап") as pbar:
             for reg_num, row in reg_num_to_row.items():
@@ -240,6 +242,17 @@ class DatabaseParser(BaseFIPSParser):
                                 'entity_data': {'full_name': holder}
                             })
 
+                    # ===== IT-специфика для баз данных =====
+                    # СУБД
+                    dbms_str = row.get('dbms')
+                    if not pd.isna(dbms_str) and dbms_str and dbms_str.lower() != 'нет':
+                        dbms_list = self._parse_dbms(dbms_str)
+                        for dbms_name in dbms_list:
+                            dbms_data.append({
+                                'reg_number': reg_num,
+                                'dbms_name': dbms_name
+                            })
+
                 except Exception as e:
                     error_reg_numbers.append(reg_num)
                     if len(error_reg_numbers) < 10:
@@ -302,6 +315,13 @@ class DatabaseParser(BaseFIPSParser):
         if relations_data and not self.command.dry_run:
             self.stdout.write("🔹 Обработка связей")
             self._process_relations_dataframe(relations_data, reg_to_ip)
+
+        # =====================================================================
+        # ШАГ 7: Обработка СУБД
+        # =====================================================================
+        if dbms_data and not self.command.dry_run:
+            self.stdout.write("🔹 Обработка систем управления базами данных")
+            self._process_dbms(dbms_data, reg_to_ip)
 
         gc.collect()
 
@@ -388,6 +408,93 @@ class DatabaseParser(BaseFIPSParser):
             result.append(holder)
         
         return result
+
+    def _parse_dbms(self, dbms_str: str) -> List[str]:
+        """
+        Парсинг строки с системами управления базами данных
+        """
+        if pd.isna(dbms_str) or not dbms_str:
+            return []
+        
+        dbms_str = str(dbms_str)
+        # Разделяем по запятой или точке с запятой
+        dbms_list = re.split(r'[;,\s]+', dbms_str)
+        
+        result = []
+        for dbms in dbms_list:
+            dbms = dbms.strip()
+            if dbms and dbms.lower() not in ['нет', 'none', 'null']:
+                result.append(dbms)
+        
+        return result
+
+    def _process_dbms(self, dbms_data: List[Dict], reg_to_ip: Dict):
+        """
+        Обработка связей с системами управления базами данных
+        """
+        if not dbms_data:
+            return
+        
+        self.stdout.write("   Подготовка связей с СУБД")
+        
+        # Группируем по reg_number
+        reg_to_dbms = defaultdict(set)
+        for item in dbms_data:
+            ip_id = reg_to_ip.get(item['reg_number'])
+            if ip_id:
+                reg_to_dbms[ip_id].add(item['dbms_name'])
+        
+        if not reg_to_dbms:
+            return
+        
+        # Получаем все уникальные названия СУБД
+        all_dbms_names = set()
+        for dbms_set in reg_to_dbms.values():
+            all_dbms_names.update(dbms_set)
+        
+        # Создаем или получаем СУБД
+        dbms_map = {}
+        for dbms_name in all_dbms_names:
+            dbms, created = DBMS.objects.get_or_create(name=dbms_name)
+            dbms_map[dbms_name] = dbms
+        
+        # Подготавливаем связи для удаления и создания
+        ip_ids = list(reg_to_dbms.keys())
+        
+        # Удаляем старые связи
+        with tqdm(total=len(ip_ids), desc="   Удаление старых связей с СУБД", unit="ip") as pbar:
+            delete_batch_size = 500
+            for i in range(0, len(ip_ids), delete_batch_size):
+                batch_ids = ip_ids[i:i+delete_batch_size]
+                IPObject.dbms.through.objects.filter(
+                    ipobject_id__in=batch_ids
+                ).delete()
+                pbar.update(len(batch_ids))
+        
+        # Создаем новые связи
+        through_objs = []
+        for ip_id, dbms_names in reg_to_dbms.items():
+            for dbms_name in dbms_names:
+                dbms = dbms_map.get(dbms_name)
+                if dbms:
+                    through_objs.append(
+                        IPObject.dbms.through(
+                            ipobject_id=ip_id,
+                            dbms_id=dbms.id
+                        )
+                    )
+        
+        if through_objs:
+            with tqdm(total=len(through_objs), desc="   Создание связей с СУБД", unit="св") as pbar:
+                create_batch_size = 2000
+                for i in range(0, len(through_objs), create_batch_size):
+                    batch = through_objs[i:i+create_batch_size]
+                    IPObject.dbms.through.objects.bulk_create(
+                        batch, batch_size=create_batch_size, ignore_conflicts=True
+                    )
+                    pbar.update(len(batch))
+        
+        self.stdout.write("   ✅ Обработка СУБД завершена")
 
     def _bulk_create_objects(self, to_create: List[Dict], pbar) -> int:
         """Пакетное создание объектов IPObject"""
