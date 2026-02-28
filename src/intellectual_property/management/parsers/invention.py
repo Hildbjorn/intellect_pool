@@ -367,7 +367,7 @@ class InventionParser(BaseFIPSParser):
                          f"организации={type_stats.get('organization', 0)}")
 
         # =====================================================================
-        # ШАГ 6.2: Группировка по сущностям
+        # ШАГ 6.2: Группировка по сущностям (ОПТИМИЗИРОВАНО)
         # =====================================================================
         unique_entities = df_relations[['entity_name', 'entity_type']].drop_duplicates()
         
@@ -377,14 +377,12 @@ class InventionParser(BaseFIPSParser):
         person_map = {}
         if not persons_df.empty:
             self.stdout.write(f"   Обработка {len(persons_df)} уникальных людей")
-            with tqdm(total=len(persons_df), desc="   Создание/поиск людей", unit="чел") as pbar:
-                person_map = self._create_persons_from_dataframe(persons_df, pbar)
+            person_map = self._create_persons_bulk(persons_df)
 
         org_map = {}
         if not orgs_df.empty:
             self.stdout.write(f"   Обработка {len(orgs_df)} уникальных организаций")
-            with tqdm(total=len(orgs_df), desc="   Создание/поиск организаций", unit="орг") as pbar:
-                org_map = self._create_organizations_from_dataframe(orgs_df, pbar)
+            org_map = self._create_organizations_bulk(orgs_df)
 
         # =====================================================================
         # ШАГ 6.3: Подготовка связей
@@ -460,53 +458,61 @@ class InventionParser(BaseFIPSParser):
 
         self.stdout.write(self.style.SUCCESS("   ✅ Обработка всех связей завершена"))
 
-    def _create_persons_from_dataframe(self, persons_df: pd.DataFrame, pbar) -> Dict:
-        """Создание людей из DataFrame"""
+    def _create_persons_bulk(self, persons_df: pd.DataFrame) -> Dict:
+        """
+        Пакетное создание людей из DataFrame (ОПТИМИЗИРОВАНО)
+        """
         person_map = {}
         all_names = persons_df['entity_name'].tolist()
         
-        # Разбиваем имена для поиска
-        name_parts = {}
+        # Собираем все имена для поиска
+        name_conditions = models.Q()
+        name_to_parts = {}
+        
         for name in all_names:
             parts = name.split()
             if len(parts) >= 2:
                 last = parts[0]
                 first = parts[1]
                 middle = parts[2] if len(parts) > 2 else ''
-                name_parts[name] = (last, first, middle)
-
-        # Строим запрос для поиска существующих
-        if name_parts:
-            query = models.Q()
-            
-            for name, (last, first, middle) in name_parts.items():
+                
+                # Сохраняем для обратного маппинга
+                name_to_parts[name] = (last, first, middle)
+                
+                # Формируем условие для поиска
                 if middle:
-                    q = models.Q(last_name=last, first_name=first, middle_name=middle)
+                    name_conditions |= models.Q(last_name=last, first_name=first, middle_name=middle)
                 else:
-                    q = models.Q(last_name=last, first_name=first) & \
-                        (models.Q(middle_name='') | models.Q(middle_name__isnull=True))
-                query |= q
-            
-            # Ищем всех существующих людей одним запросом
-            for person in Person.objects.filter(query).only('ceo_id', 'last_name', 'first_name', 'middle_name', 'ceo'):
-                # Проверяем каждое имя
-                for name, (last, first, middle) in name_parts.items():
+                    name_conditions |= models.Q(last_name=last, first_name=first) & \
+                                      (models.Q(middle_name='') | models.Q(middle_name__isnull=True))
+
+        # Поиск существующих людей одним запросом
+        existing_persons = {}
+        if name_conditions:
+            for person in Person.objects.filter(name_conditions).only(
+                'ceo_id', 'last_name', 'first_name', 'middle_name', 'ceo'
+            ):
+                # Пытаемся найти соответствие
+                for name, (last, first, middle) in name_to_parts.items():
                     if (person.last_name == last and 
                         person.first_name == first and 
                         (not middle or person.middle_name == middle)):
-                        person_map[name] = person
+                        existing_persons[name] = person
                         self.person_cache[name] = person
                         break
 
         # Определяем новых людей
-        new_names = [name for name in all_names if name not in person_map]
+        new_names = [name for name in all_names if name not in existing_persons]
         
         if new_names:
+            self.stdout.write(f"      Создание {len(new_names)} новых людей")
+            
             max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
             existing_slugs = set(Person.objects.values_list('slug', flat=True)[:100000])
             
             people_to_create = []
             
+            # Создаем объекты для bulk_create
             for name in new_names:
                 parts = name.split()
                 if len(parts) >= 2:
@@ -535,36 +541,48 @@ class InventionParser(BaseFIPSParser):
                         slug=unique_slug
                     )
                     people_to_create.append(person)
-                    person_map[name] = person
-                    self.person_cache[name] = person
-                
-                pbar.update(1)
             
+            # Массовое создание
             if people_to_create:
                 for batch in batch_iterator(people_to_create, 500):
                     Person.objects.bulk_create(batch, batch_size=500)
+                
+                # Получаем созданных людей для маппинга
+                created_names = [p.ceo for p in people_to_create]
+                for person in Person.objects.filter(ceo__in=created_names):
+                    person_map[person.ceo] = person
+                    self.person_cache[person.ceo] = person
 
+        # Добавляем существующих людей в маппинг
+        person_map.update(existing_persons)
+        
         return person_map
 
-    def _create_organizations_from_dataframe(self, orgs_df: pd.DataFrame, pbar) -> Dict:
-        """Создание организаций из DataFrame"""
+    def _create_organizations_bulk(self, orgs_df: pd.DataFrame) -> Dict:
+        """
+        Пакетное создание организаций из DataFrame (ОПТИМИЗИРОВАНО)
+        """
         org_map = {}
         all_names = orgs_df['entity_name'].tolist()
         
-        # Поиск существующих организаций
+        # Поиск существующих организаций одним запросом
         existing_orgs = {}
         for org in Organization.objects.filter(name__in=all_names).only('organization_id', 'name'):
             existing_orgs[org.name] = org
             self.organization_cache[org.name] = org
 
+        # Определяем новые организации
         new_names = [name for name in all_names if name not in existing_orgs]
         
         if new_names:
+            self.stdout.write(f"      Создание {len(new_names)} новых организаций")
+            
             max_id = Organization.objects.aggregate(models.Max('organization_id'))['organization_id__max'] or 0
             existing_slugs = set(Organization.objects.values_list('slug', flat=True)[:50000])
             
             orgs_to_create = []
             
+            # Создаем объекты для bulk_create
             for name in new_names:
                 base_slug = slugify(name[:50]) or 'organization'
                 unique_slug = base_slug
@@ -584,20 +602,34 @@ class InventionParser(BaseFIPSParser):
                     strategic=False,
                 )
                 orgs_to_create.append(org)
-                
-                pbar.update(1)
             
+            # Массовое создание
             if orgs_to_create:
                 for batch in batch_iterator(orgs_to_create, 500):
                     Organization.objects.bulk_create(batch, batch_size=500)
+                
+                # Получаем созданные организации для маппинга
+                created_names = [o.name for o in orgs_to_create]
+                for org in Organization.objects.filter(name__in=created_names):
+                    org_map[org.name] = org
+                    self.organization_cache[org.name] = org
 
-        for name in all_names:
-            if name in existing_orgs:
-                org_map[name] = existing_orgs[name]
-            elif name in self.organization_cache:
-                org_map[name] = self.organization_cache[name]
-
+        # Добавляем существующие организации в маппинг
+        org_map.update(existing_orgs)
+        
         return org_map
+
+    def _create_persons_from_dataframe(self, persons_df: pd.DataFrame, pbar) -> Dict:
+        """
+        Создание людей из DataFrame (старый метод, оставлен для совместимости)
+        """
+        return self._create_persons_bulk(persons_df)
+
+    def _create_organizations_from_dataframe(self, orgs_df: pd.DataFrame, pbar) -> Dict:
+        """
+        Создание организаций из DataFrame (старый метод, оставлен для совместимости)
+        """
+        return self._create_organizations_bulk(orgs_df)
 
     def _delete_author_relations(self, ip_ids: List[int], pbar):
         """Удаление связей авторов"""
