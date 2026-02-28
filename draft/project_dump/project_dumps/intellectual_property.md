@@ -979,7 +979,6 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("\n🔍 РЕЖИМ DRY-RUN: изменения НЕ сохранены в БД"))
 
         self.stdout.write(self.style.SUCCESS(f"{'='*60}"))
-
 ```
 
 
@@ -2908,7 +2907,7 @@ from .processors import (
 )
 
 # ИСПРАВЛЕНО: импортируем утилиты из родительского пакета (..utils)
-from ..utils.progress import ProgressManager, batch_iterator
+from ..utils.progress import batch_iterator
 
 logger = logging.getLogger(__name__)
 
@@ -2920,9 +2919,6 @@ class BaseFIPSParser:
         self.command = command
         self.stdout = command.stdout
         self.style = command.style
-
-        # Инициализация менеджера прогресса
-        self.progress = ProgressManager(file=self.stdout)
 
         # Инициализация процессоров
         self.processor = RussianTextProcessor()
@@ -3015,7 +3011,7 @@ class BaseFIPSParser:
             return None
 
         except Exception as e:
-            self.progress.warning(f"Ошибка поиска страны {code}: {e}")
+            self.stdout.write(self.style.WARNING(f"  Ошибка поиска страны {code}: {e}"))
             return None
 
     def parse_authors(self, authors_str):
@@ -3142,7 +3138,7 @@ class BaseFIPSParser:
             self.person_cache[cache_key] = person
             return person
         except Exception as e:
-            self.progress.warning(f"Ошибка создания Person: {e}")
+            self.stdout.write(self.style.WARNING(f"  Ошибка создания Person: {e}"))
             return None
 
     def find_or_create_person_from_name(self, full_name):
@@ -3288,9 +3284,8 @@ class BaseFIPSParser:
             self.organization_cache[org_name] = org
             return org
         except Exception as e:
-            self.progress.warning(f"Ошибка создания Organization: {e}")
+            self.stdout.write(self.style.WARNING(f"  Ошибка создания Organization: {e}"))
             return None
-
 ```
 
 
@@ -3784,7 +3779,7 @@ class InventionParser(BaseFIPSParser):
                          f"организации={type_stats.get('organization', 0)}")
 
         # =====================================================================
-        # ШАГ 6.2: Группировка по сущностям
+        # ШАГ 6.2: Группировка по сущностям (ОПТИМИЗИРОВАНО)
         # =====================================================================
         unique_entities = df_relations[['entity_name', 'entity_type']].drop_duplicates()
         
@@ -3794,55 +3789,67 @@ class InventionParser(BaseFIPSParser):
         person_map = {}
         if not persons_df.empty:
             self.stdout.write(f"   Обработка {len(persons_df)} уникальных людей")
-            with tqdm(total=len(persons_df), desc="   Создание/поиск людей", unit="чел") as pbar:
-                person_map = self._create_persons_from_dataframe(persons_df, pbar)
+            person_map = self._create_persons_bulk(persons_df)
 
         org_map = {}
         if not orgs_df.empty:
             self.stdout.write(f"   Обработка {len(orgs_df)} уникальных организаций")
-            with tqdm(total=len(orgs_df), desc="   Создание/поиск организаций", unit="орг") as pbar:
-                org_map = self._create_organizations_from_dataframe(orgs_df, pbar)
+            org_map = self._create_organizations_bulk(orgs_df)
 
         # =====================================================================
         # ШАГ 6.3: Подготовка связей
         # =====================================================================
         self.stdout.write("   Подготовка связей для вставки в БД")
-        
+
         authors_df = df_relations[df_relations['relation_type'] == 'author'].copy()
         holders_df = df_relations[df_relations['relation_type'] == 'holder'].copy()
 
         author_relations = []
         if not authors_df.empty:
-            authors_df['person_id'] = authors_df['entity_name'].map(
-                {name: p.ceo_id for name, p in person_map.items()}
-            )
+            # Создаем маппинг имен в ID
+            person_id_map = {name: p.ceo_id for name, p in person_map.items()}
+            authors_df['person_id'] = authors_df['entity_name'].map(person_id_map)
+            
+            # Убираем строки с отсутствующим person_id (NaN)
+            authors_df = authors_df.dropna(subset=['person_id'])
+            authors_df['person_id'] = authors_df['person_id'].astype(int)
+            
+            # Убираем дубликаты
             authors_unique = authors_df[['ip_id', 'person_id']].drop_duplicates()
             author_relations = [(row['ip_id'], row['person_id']) 
-                               for _, row in authors_unique.iterrows()]
+                            for _, row in authors_unique.iterrows()]
             self.stdout.write(f"   Подготовлено {len(author_relations)} уникальных связей авторов")
 
         holder_person_relations = []
         holder_org_relations = []
-        
+
         if not holders_df.empty:
             holders_persons = holders_df[holders_df['entity_type'] == 'person'].copy()
             if not holders_persons.empty:
-                holders_persons['person_id'] = holders_persons['entity_name'].map(
-                    {name: p.ceo_id for name, p in person_map.items()}
-                )
+                person_id_map = {name: p.ceo_id for name, p in person_map.items()}
+                holders_persons['person_id'] = holders_persons['entity_name'].map(person_id_map)
+                
+                # Убираем строки с отсутствующим person_id
+                holders_persons = holders_persons.dropna(subset=['person_id'])
+                holders_persons['person_id'] = holders_persons['person_id'].astype(int)
+                
                 holders_persons_unique = holders_persons[['ip_id', 'person_id']].drop_duplicates()
                 holder_person_relations = [(row['ip_id'], row['person_id']) 
-                                          for _, row in holders_persons_unique.iterrows()]
+                                        for _, row in holders_persons_unique.iterrows()]
                 self.stdout.write(f"   Подготовлено {len(holder_person_relations)} связей правообладателей-людей")
 
             holders_orgs = holders_df[holders_df['entity_type'] == 'organization'].copy()
             if not holders_orgs.empty:
-                holders_orgs['org_id'] = holders_orgs['entity_name'].map(
-                    {name: o.organization_id for name, o in org_map.items()}
-                )
+                org_id_map = {name: o.organization_id for name, o in org_map.items()}
+                holders_orgs['org_id'] = holders_orgs['entity_name'].map(org_id_map)
+                
+                # Убираем строки с отсутствующим org_id
+                holders_orgs = holders_orgs.dropna(subset=['org_id'])
+                holders_orgs['org_id'] = holders_orgs['org_id'].astype(int)
+                
                 holders_orgs_unique = holders_orgs[['ip_id', 'org_id']].drop_duplicates()
                 holder_org_relations = [(row['ip_id'], row['org_id']) 
-                                       for _, row in holders_orgs_unique.iterrows()]
+                                    for _, row in holders_orgs_unique.iterrows()]
                 self.stdout.write(f"   Подготовлено {len(holder_org_relations)} связей правообладателей-организаций")
 
         # =====================================================================
@@ -3877,56 +3884,95 @@ class InventionParser(BaseFIPSParser):
 
         self.stdout.write(self.style.SUCCESS("   ✅ Обработка всех связей завершена"))
 
-    def _create_persons_from_dataframe(self, persons_df: pd.DataFrame, pbar) -> Dict:
-        """Создание людей из DataFrame"""
+    def _create_persons_bulk(self, persons_df: pd.DataFrame) -> Dict:
+        """
+        Пакетное создание людей из DataFrame с индикацией прогресса
+        """
         person_map = {}
         all_names = persons_df['entity_name'].tolist()
+        total_names = len(all_names)
         
-        # Разбиваем имена для поиска
-        name_parts = {}
+        self.stdout.write(f"      Всего уникальных людей для обработки: {total_names}")
+        
+        # ШАГ 1: Поиск существующих людей (пачками по 100 имен)
+        self.stdout.write(f"      Поиск существующих людей в БД...")
+        
+        # Разбиваем имена на части для поиска
+        name_to_parts = {}
         for name in all_names:
             parts = name.split()
             if len(parts) >= 2:
                 last = parts[0]
                 first = parts[1]
                 middle = parts[2] if len(parts) > 2 else ''
-                name_parts[name] = (last, first, middle)
-
-        # Строим запрос для поиска существующих
-        if name_parts:
-            query = models.Q()
-            name_to_query_key = {}  # Для обратного маппинга
+                name_to_parts[name] = (last, first, middle)
+        
+        # Ищем людей пачками
+        existing_persons = {}
+        found_count = 0
+        batch_size = 100  # SQLite может обработать ~100 OR условий
+        
+        all_names_list = list(name_to_parts.keys())
+        
+        for i in range(0, len(all_names_list), batch_size):
+            batch_names = all_names_list[i:i+batch_size]
             
-            for name, (last, first, middle) in name_parts.items():
+            # Строим запрос для текущей пачки
+            name_conditions = models.Q()
+            batch_name_to_parts = {}
+            
+            for name in batch_names:
+                last, first, middle = name_to_parts[name]
+                batch_name_to_parts[name] = (last, first, middle)
+                
                 if middle:
-                    q = models.Q(last_name=last, first_name=first, middle_name=middle)
+                    name_conditions |= models.Q(
+                        last_name=last, 
+                        first_name=first, 
+                        middle_name=middle
+                    )
                 else:
-                    q = models.Q(last_name=last, first_name=first) & \
-                        (models.Q(middle_name='') | models.Q(middle_name__isnull=True))
-                query |= q
-                # Сохраняем соответствие для быстрого поиска
-                name_to_query_key[name] = (last, first, middle)
+                    name_conditions |= models.Q(
+                        last_name=last, 
+                        first_name=first
+                    ) & (models.Q(middle_name='') | models.Q(middle_name__isnull=True))
             
-            # Ищем всех существующих людей одним запросом
-            for person in Person.objects.filter(query).only('ceo_id', 'last_name', 'first_name', 'middle_name', 'ceo'):
-                # Проверяем каждое имя
-                for name, (last, first, middle) in name_parts.items():
+            # Выполняем поиск для пачки
+            for person in Person.objects.filter(name_conditions).only(
+                'ceo_id', 'last_name', 'first_name', 'middle_name', 'ceo'
+            ):
+                # Ищем соответствие в текущей пачке
+                for name, (last, first, middle) in batch_name_to_parts.items():
                     if (person.last_name == last and 
                         person.first_name == first and 
                         (not middle or person.middle_name == middle)):
-                        person_map[name] = person
+                        existing_persons[name] = person
                         self.person_cache[name] = person
+                        found_count += 1
                         break
+            
+            # Показываем прогресс поиска
+            if (i + len(batch_names)) % 500 == 0 or (i + len(batch_names)) >= len(all_names_list):
+                self.stdout.write(f"         Обработано {i + len(batch_names)}/{len(all_names_list)} имен")
+        
+        self.stdout.write(f"      Найдено существующих: {found_count}")
 
         # Определяем новых людей
-        new_names = [name for name in all_names if name not in person_map]
+        new_names = [name for name in all_names if name not in existing_persons]
+        new_count = len(new_names)
+        
+        self.stdout.write(f"      Новых людей для создания: {new_count}")
         
         if new_names:
+            # ШАГ 2: Подготовка данных для создания
+            self.stdout.write(f"      Подготовка данных для создания...")
+            
             max_id = Person.objects.aggregate(models.Max('ceo_id'))['ceo_id__max'] or 0
             existing_slugs = set(Person.objects.values_list('slug', flat=True)[:100000])
             
             people_to_create = []
             
+            # Создаем объекты для bulk_create
             for name in new_names:
                 parts = name.split()
                 if len(parts) >= 2:
@@ -3955,36 +4001,83 @@ class InventionParser(BaseFIPSParser):
                         slug=unique_slug
                     )
                     people_to_create.append(person)
-                    person_map[name] = person
-                    self.person_cache[name] = person
-                
-                pbar.update(1)
             
-            if people_to_create:
-                for batch in batch_iterator(people_to_create, 500):
-                    Person.objects.bulk_create(batch, batch_size=500)
+            # ШАГ 3: Массовое создание с индикацией прогресса
+            self.stdout.write(f"      Создание людей пачками по 500...")
+            
+            batch_size = 500
+            created_count = 0
+            
+            for batch in batch_iterator(people_to_create, batch_size):
+                Person.objects.bulk_create(batch, batch_size=batch_size)
+                created_count += len(batch)
+                
+                # Показываем прогресс каждые 5000 записей
+                if created_count % 5000 == 0 or created_count == new_count:
+                    percent = (created_count / new_count) * 100
+                    self.stdout.write(f"         Создано {created_count}/{new_count} ({percent:.1f}%)")
+            
+            # ШАГ 4: Получение созданных людей для маппинга
+            self.stdout.write(f"      Получение созданных людей для маппинга...")
+            
+            created_names = [p.ceo for p in people_to_create]
+            for batch in batch_iterator(created_names, 1000):
+                for person in Person.objects.filter(ceo__in=batch):
+                    person_map[person.ceo] = person
+                    self.person_cache[person.ceo] = person
 
+        # Добавляем существующих людей в маппинг
+        person_map.update(existing_persons)
+        
+        self.stdout.write(f"      ✅ Обработано людей: {len(person_map)}")
+        
         return person_map
 
-    def _create_organizations_from_dataframe(self, orgs_df: pd.DataFrame, pbar) -> Dict:
-        """Создание организаций из DataFrame"""
+    def _create_organizations_bulk(self, orgs_df: pd.DataFrame) -> Dict:
+        """
+        Пакетное создание организаций из DataFrame с индикацией прогресса
+        """
         org_map = {}
         all_names = orgs_df['entity_name'].tolist()
+        total_names = len(all_names)
         
-        # Поиск существующих организаций
+        self.stdout.write(f"      Всего уникальных организаций для обработки: {total_names}")
+        
+        # ШАГ 1: Поиск существующих организаций (пачками)
+        self.stdout.write(f"      Поиск существующих организаций в БД...")
+        
         existing_orgs = {}
-        for org in Organization.objects.filter(name__in=all_names).only('organization_id', 'name'):
-            existing_orgs[org.name] = org
-            self.organization_cache[org.name] = org
+        batch_size = 100  # SQLite может обработать ~100 условий IN
+        
+        for i in range(0, len(all_names), batch_size):
+            batch_names = all_names[i:i+batch_size]
+            
+            for org in Organization.objects.filter(name__in=batch_names).only('organization_id', 'name'):
+                existing_orgs[org.name] = org
+                self.organization_cache[org.name] = org
+            
+            # Показываем прогресс поиска
+            if (i + len(batch_names)) % 500 == 0 or (i + len(batch_names)) >= len(all_names):
+                self.stdout.write(f"         Обработано {i + len(batch_names)}/{len(all_names)} названий")
+        
+        self.stdout.write(f"      Найдено существующих: {len(existing_orgs)}")
 
+        # Определяем новые организации
         new_names = [name for name in all_names if name not in existing_orgs]
+        new_count = len(new_names)
+        
+        self.stdout.write(f"      Новых организаций для создания: {new_count}")
         
         if new_names:
+            # ШАГ 2: Подготовка данных для создания
+            self.stdout.write(f"      Подготовка данных для создания...")
+            
             max_id = Organization.objects.aggregate(models.Max('organization_id'))['organization_id__max'] or 0
             existing_slugs = set(Organization.objects.values_list('slug', flat=True)[:50000])
             
             orgs_to_create = []
             
+            # Создаем объекты для bulk_create
             for name in new_names:
                 base_slug = slugify(name[:50]) or 'organization'
                 unique_slug = base_slug
@@ -4004,20 +4097,49 @@ class InventionParser(BaseFIPSParser):
                     strategic=False,
                 )
                 orgs_to_create.append(org)
-                
-                pbar.update(1)
             
-            if orgs_to_create:
-                for batch in batch_iterator(orgs_to_create, 500):
-                    Organization.objects.bulk_create(batch, batch_size=500)
+            # ШАГ 3: Массовое создание с индикацией прогресса
+            self.stdout.write(f"      Создание организаций пачками по 500...")
+            
+            batch_size = 500
+            created_count = 0
+            
+            for batch in batch_iterator(orgs_to_create, batch_size):
+                Organization.objects.bulk_create(batch, batch_size=batch_size)
+                created_count += len(batch)
+                
+                # Показываем прогресс каждые 5000 записей
+                if created_count % 5000 == 0 or created_count == new_count:
+                    percent = (created_count / new_count) * 100
+                    self.stdout.write(f"         Создано {created_count}/{new_count} ({percent:.1f}%)")
+            
+            # ШАГ 4: Получение созданных организаций для маппинга
+            self.stdout.write(f"      Получение созданных организаций для маппинга...")
+            
+            created_names = [o.name for o in orgs_to_create]
+            for batch in batch_iterator(created_names, 1000):
+                for org in Organization.objects.filter(name__in=batch):
+                    org_map[org.name] = org
+                    self.organization_cache[org.name] = org
 
-        for name in all_names:
-            if name in existing_orgs:
-                org_map[name] = existing_orgs[name]
-            elif name in self.organization_cache:
-                org_map[name] = self.organization_cache[name]
-
+        # Добавляем существующие организации в маппинг
+        org_map.update(existing_orgs)
+        
+        self.stdout.write(f"      ✅ Обработано организаций: {len(org_map)}")
+        
         return org_map
+
+    def _create_persons_from_dataframe(self, persons_df: pd.DataFrame, pbar) -> Dict:
+        """
+        Создание людей из DataFrame (старый метод, оставлен для совместимости)
+        """
+        return self._create_persons_bulk(persons_df)
+
+    def _create_organizations_from_dataframe(self, orgs_df: pd.DataFrame, pbar) -> Dict:
+        """
+        Создание организаций из DataFrame (старый метод, оставлен для совместимости)
+        """
+        return self._create_organizations_bulk(orgs_df)
 
     def _delete_author_relations(self, ip_ids: List[int], pbar):
         """Удаление связей авторов"""
@@ -4144,7 +4266,7 @@ from .integrated_circuit import IntegratedCircuitTopologyParser
 from .computer_program import ComputerProgramParser
 from .database import DatabaseParser
 
-# Импортируем процессоры из подпакета processors (правильно: .processors)
+# Импортируем процессоры из подпакета processors
 from .processors import (
     RussianTextProcessor,
     OrganizationNormalizer,
@@ -4166,7 +4288,6 @@ __all__ = [
     'RIDNameFormatter',
     'EntityTypeDetector',
 ]
-
 ```
 
 
@@ -4289,7 +4410,6 @@ class EntityTypeDetector:
         self.cache.clear()
         self.cache_hits = 0
         self.cache_misses = 0
-
 ```
 
 
@@ -4675,7 +4795,6 @@ __all__ = [
     'RIDNameFormatter',
     'EntityTypeDetector',
 ]
-
 ```
 
 
@@ -4831,6 +4950,110 @@ def apply_filters(df, min_year, only_active, stdout=None):
 
 -----
 
+# Файл: management\utils\progress.py
+
+```
+"""
+Утилиты для отображения прогресс-баров
+Вынесены отдельно для переиспользования в других парсерах
+"""
+
+import sys
+from tqdm import tqdm
+from contextlib import contextmanager
+from typing import Optional, Iterable, Iterator, Any
+
+
+class ProgressManager:
+    """
+    Менеджер для работы с прогресс-барами
+    Все прогресс-бары отображаются в одной строке (как в оригинальном tqdm)
+    """
+    
+    def __init__(self, enabled: bool = True, file=sys.stdout):
+        self.enabled = enabled
+        self.file = file
+        self._current_bar = None  # Текущий активный прогресс-бар
+    
+    @contextmanager
+    def task(self, description: str, total: Optional[int] = None, unit: str = "элем"):
+        """
+        Контекстный менеджер для задачи с прогресс-баром
+        Все задачи используют одну строку (предыдущая закрывается)
+        """
+        # Если есть предыдущий бар, закрываем его
+        if self._current_bar is not None:
+            self._current_bar.close()
+        
+        # Создаем новый прогресс-бар
+        bar = tqdm(
+            total=total,
+            desc=description,
+            unit=unit,
+            file=self.file,
+            leave=False,
+            bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
+        )
+        
+        self._current_bar = bar
+        
+        try:
+            yield bar
+        finally:
+            bar.close()
+            self._current_bar = None
+            print(file=self.file)
+    
+    @contextmanager
+    def subtask(self, description: str, total: Optional[int] = None, unit: str = "элем"):
+        """Алиас для task (для обратной совместимости)"""
+        with self.task(description, total, unit) as bar:
+            yield bar
+    
+    def step(self, message: str):
+        """Вывод сообщения о шаге (всегда с новой строки)"""
+        if self._current_bar is not None:
+            self._current_bar.write(f"🔹 {message}")
+        else:
+            print(f"🔹 {message}", file=self.file)
+
+    def success(self, message: str):
+        """Вывод сообщения об успехе"""
+        if self._current_bar is not None:
+            self._current_bar.write(f"✅ {message}")
+        else:
+            print(f"✅ {message}", file=self.file)
+
+    def warning(self, message: str):
+        """Вывод предупреждения"""
+        if self._current_bar is not None:
+            self._current_bar.write(f"⚠️ {message}")
+        else:
+            print(f"⚠️ {message}", file=self.file)
+
+    def error(self, message: str):
+        """Вывод ошибки"""
+        if self._current_bar is not None:
+            self._current_bar.write(f"❌ {message}")
+        else:
+            print(f"❌ {message}", file=self.file)
+
+
+def batch_iterator(iterable, batch_size: int):
+    """Разбивает итерируемый объект на батчи"""
+    batch = []
+    for item in iterable:
+        batch.append(item)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+```
+
+
+-----
+
 # Файл: management\utils\__init__.py
 
 ```
@@ -4848,7 +5071,6 @@ __all__ = [
     'ProgressManager',
     'batch_iterator',
 ]
-
 ```
 
 
