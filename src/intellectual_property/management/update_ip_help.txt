@@ -1,0 +1,20 @@
+# Обновить только статус (actual) для всех типов, от новых к старым
+python manage.py update_ip --only-actual
+
+# Обновить только статус для изобретений, от новых к старым
+python manage.py update_ip --ip-type invention --only-actual
+
+# Обновить только статус для промышленных образцов, от старых к новым
+python manage.py update_ip --ip-type industrial-design --only-actual --start-from-oldest
+
+# Обновить только статус, начиная с последних (явно указано)
+python manage.py update_ip --only-actual --start-from-latest
+
+# Тестовый режим для статуса (10 запросов)
+python manage.py update_ip --only-actual --dry-run --max-requests 10
+
+# Полное обновление всех полей от новых к старым
+python manage.py update_ip
+
+# Полное обновление от старых к новым
+python manage.py update_ip --start-from-oldest
