@@ -12,6 +12,7 @@ import gc
 from django.db import models
 from django.utils.text import slugify
 import pandas as pd
+from tqdm import tqdm
 
 from intellectual_property.models import IPObject, IPType
 from core.models import Person, Organization, Country
