@@ -6,6 +6,13 @@
 - --force: начинает с начала (обрабатывает все записи подряд)
 - --only-actual: обновляет только поле actual по всем записям
 - обычный запуск: находит первую запись с пустым abstract и начинает с неё
+
+Мимикрия под реального пользователя:
+- Ротация User-Agent (пул современных браузеров)
+- Разнообразные Accept-Language заголовки
+- Эмуляция полной браузерной сессии
+- Умные задержки с длинными паузами
+- Случайные вариации в заголовках
 """
 
 import logging
@@ -59,14 +66,15 @@ class Command(BaseCommand):
         parser.add_argument(
             '--delay',
             type=float,
-            default=1.0,
-            help='Задержка между запросами в секундах (по умолчанию 1.0)'
+            default=2.0,
+            help='Базовая задержка между запросами в секундах (по умолчанию 2.0)'
         )
         
         parser.add_argument(
             '--random-delay',
             action='store_true',
-            help='Использовать случайную задержку (0.5-1.5 от указанной)'
+            default=True,
+            help='Использовать случайную задержку (включено по умолчанию)'
         )
         
         parser.add_argument(
@@ -93,13 +101,6 @@ class Command(BaseCommand):
             type=int,
             default=30,
             help='Таймаут запроса в секундах (по умолчанию 30)'
-        )
-        
-        parser.add_argument(
-            '--user-agent',
-            type=str,
-            default='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            help='User-Agent для запросов'
         )
         
         parser.add_argument(
@@ -138,6 +139,20 @@ class Command(BaseCommand):
             '--start-from-id',
             type=int,
             help='Начать обработку с конкретного ID (переопределяет автоматическое определение)'
+        )
+        
+        parser.add_argument(
+            '--human-mode',
+            action='store_true',
+            default=True,
+            help='Максимальная мимикрия под человека (включено по умолчанию)'
+        )
+        
+        parser.add_argument(
+            '--no-human-mode',
+            action='store_false',
+            dest='human_mode',
+            help='Отключить мимикрию под человека (для тестирования)'
         )
 
     def __init__(self, *args, **kwargs):
@@ -210,6 +225,59 @@ class Command(BaseCommand):
         self.block_detected = False
         self.block_info = {}
         self.start_id = None  # ID, с которого начинаем обработку
+        
+        # ========== НАСТРОЙКИ МИМИКРИИ ==========
+        
+        # Пул современных User-Agent'ов
+        self.user_agents = [
+            # Windows + Chrome
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            
+            # Windows + Firefox
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/120.0',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
+            
+            # Windows + Edge
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0',
+            
+            # macOS + Safari
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15',
+            
+            # Linux + Chrome
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            
+            # Мобильные (иногда полезно)
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1',
+            'Mozilla/5.0 (Android 13; Mobile; rv:109.0) Gecko/121.0 Firefox/121.0',
+        ]
+        
+        # Варианты Accept-Language
+        self.accept_languages = [
+            'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+            'ru,en-US;q=0.9,en;q=0.8,uk;q=0.7',
+            'ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4',
+            'en-US,en;q=0.9,ru;q=0.8',
+            'ru,en;q=0.9,uk;q=0.8',
+            'ru-RU,ru;q=0.9,en;q=0.5',
+            'ru,en;q=0.8',
+        ]
+        
+        # Варианты Accept (иногда браузеры их меняют)
+        self.accept_variants = [
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        ]
+        
+        # Заголовки Sec-Fetch (браузерные)
+        self.sec_fetch_dest = ['document', 'empty', 'iframe']
+        self.sec_fetch_mode = ['navigate', 'cors', 'same-origin']
 
     def handle(self, *args, **options):
         self.verbosity = options['verbosity']
@@ -220,11 +288,11 @@ class Command(BaseCommand):
         self.dry_run = options['dry_run']
         self.force = options['force']
         self.timeout = options['timeout']
-        self.user_agent = options['user_agent']
         self.only_actual = options['only_actual']
         self.block_retry_delay = options['block_retry_delay']
         self.auto_retry_after_block = options['auto_retry_after_block']
         self.start_from_id = options['start_from_id']
+        self.human_mode = options['human_mode']
         
         # Определяем порядок сортировки
         if options['start_from_oldest']:
@@ -241,7 +309,7 @@ class Command(BaseCommand):
         
         self.print_header(order_text)
         
-        # Инициализируем сессию
+        # Инициализируем сессию с мимикрией
         self.init_session()
         
         # Получаем список типов для обработки
@@ -279,7 +347,14 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("\n📌 РЕЖИМ: принудительное обновление с начала (--force)"))
         
         self.stdout.write(f"\n📌 Порядок обработки: {order_text}")
-        self.stdout.write(f"📌 Защита от блокировки: включена")
+        
+        if self.human_mode:
+            self.stdout.write(f"📌 Мимикрия под человека: ВКЛЮЧЕНА")
+            self.stdout.write(f"   • Ротация User-Agent: {len(self.user_agents)} вариантов")
+            self.stdout.write(f"   • Умные задержки с длинными паузами")
+            self.stdout.write(f"   • Эмуляция браузерной сессии")
+        else:
+            self.stdout.write(f"📌 Мимикрия под человека: ОТКЛЮЧЕНА")
         
         if self.dry_run:
             self.stdout.write(self.style.WARNING("\n🔍 РЕЖИМ DRY-RUN: изменения НЕ будут сохранены в БД\n"))
@@ -335,15 +410,157 @@ class Command(BaseCommand):
                     raise
 
     def init_session(self):
-        """Инициализация HTTP-сессии"""
+        """Инициализация HTTP-сессии с мимикрией под реальный браузер"""
         self.session = requests.Session()
+        
+        if not self.human_mode:
+            # Режим без мимикрии - минимальные заголовки
+            self.session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            })
+            return
+        
+        # ===== РЕЖИМ ПОЛНОЙ МИМИКРИИ =====
+        
+        # Устанавливаем начальные заголовки (базовые)
         self.session.headers.update({
-            'User-Agent': self.user_agent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3',
+            'Accept': random.choice(self.accept_variants),
+            'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
+            'Cache-Control': 'max-age=0',
         })
+        
+        # Устанавливаем случайный User-Agent и Accept-Language
+        self.rotate_headers()
+        
+        # Эмулируем загрузку главной страницы для получения cookies
+        self.emulate_browser_session()
+
+    def rotate_headers(self):
+        """Ротация заголовков для каждого запроса"""
+        if not self.human_mode:
+            return
+        
+        # Случайный User-Agent
+        user_agent = random.choice(self.user_agents)
+        self.session.headers.update({'User-Agent': user_agent})
+        
+        # Случайный Accept-Language
+        accept_language = random.choice(self.accept_languages)
+        self.session.headers.update({'Accept-Language': accept_language})
+        
+        # Случайный Accept (иногда меняется)
+        if random.random() < 0.3:  # 30% запросов
+            self.session.headers.update({'Accept': random.choice(self.accept_variants)})
+        
+        # Случайные Sec-Fetch заголовки (браузерные)
+        if random.random() < 0.5:
+            self.session.headers.update({
+                'Sec-Fetch-Dest': random.choice(self.sec_fetch_dest),
+                'Sec-Fetch-Mode': random.choice(self.sec_fetch_mode),
+                'Sec-Fetch-Site': random.choice(['same-origin', 'same-site', 'cross-site']),
+            })
+        
+        # Иногда добавляем заголовок DNT (Do Not Track)
+        if random.random() < 0.2:
+            self.session.headers.update({'DNT': '1'})
+        else:
+            self.session.headers.pop('DNT', None)
+
+    def emulate_browser_session(self):
+        """Эмуляция полной сессии браузера - загрузка главной страницы и получение cookies"""
+        if not self.human_mode:
+            return
+        
+        try:
+            if self.verbosity >= 2:
+                self.stdout.write("   🌐 Эмуляция загрузки главной страницы ФИПС...")
+            
+            # Небольшая пауза перед первой загрузкой (как человек)
+            time.sleep(random.uniform(1, 3))
+            
+            # Загружаем главную страницу
+            main_page_response = self.session.get(
+                'https://www1.fips.ru/', 
+                timeout=self.timeout,
+                allow_redirects=True
+            )
+            
+            # Куки сохранятся автоматически в self.session.cookies
+            
+            # Небольшая пауза после загрузки главной
+            time.sleep(random.uniform(2, 4))
+            
+            # Иногда загружаем ещё пару страниц для большей естественности
+            if random.random() < 0.7:  # 70% случаев
+                pages = [
+                    'https://www1.fips.ru/about/',
+                    'https://www1.fips.ru/activities/',
+                    'https://www1.fips.ru/information-systems/',
+                    'https://www1.fips.ru/news/',
+                ]
+                # Загружаем 1-3 случайные страницы
+                for _ in range(random.randint(1, 3)):
+                    page = random.choice(pages)
+                    self.session.get(page, timeout=self.timeout)
+                    time.sleep(random.uniform(1, 3))
+            
+            if self.verbosity >= 2:
+                self.stdout.write(f"   ✅ Куки получены: {len(self.session.cookies)} шт.")
+                
+        except Exception as e:
+            if self.verbosity >= 2:
+                self.stdout.write(f"   ⚠️ Не удалось загрузить главную страницу: {e}")
+            # Продолжаем работу без кук, возможно, они и не нужны
+
+    def apply_delay(self):
+        """Умная задержка между запросами с имитацией человеческого поведения"""
+        if self.delay <= 0 or self.block_detected:
+            return
+        
+        if not self.human_mode:
+            # Простая задержка без мимикрии
+            time.sleep(self.delay)
+            return
+        
+        # ===== УМНЫЕ ЗАДЕРЖКИ С МИМИКРИЕЙ =====
+        
+        # Каждые 30-70 запросов делаем длинную паузу (как будто пользователь отошел)
+        if self.request_count % random.randint(30, 70) == 0:
+            long_delay = random.uniform(45, 180)  # 45 секунд - 3 минуты
+            if self.verbosity >= 1:
+                self.stdout.write(f"\n   💤 ДЛИННАЯ ПАУЗА {long_delay:.1f} сек... (после {self.request_count} запросов)")
+            time.sleep(long_delay)
+            return
+        
+        # Каждые 10-20 запросов делаем среднюю паузу (изучение страницы)
+        if self.request_count % random.randint(10, 20) == 0:
+            medium_delay = random.uniform(8, 25)  # 8-25 секунд
+            if self.verbosity >= 2:
+                self.stdout.write(f"\n   ⏱️ ПАУЗА {medium_delay:.1f} сек (изучение)...")
+            time.sleep(medium_delay)
+            return
+        
+        # Обычная задержка с вариациями
+        base_delay = self.delay * random.uniform(0.7, 2.5)
+        
+        # Иногда добавляем "микро-паузы" (как будто пользователь читает)
+        extra_delay = 0
+        if random.random() < 0.3:  # 30% случаев
+            extra_delay = random.uniform(1, 5)
+            if self.verbosity >= 3:
+                self.stdout.write(f"      🤔 Читает... +{extra_delay:.1f} сек")
+        
+        # Иногда делаем две короткие паузы подряд (имитация задумчивости)
+        if random.random() < 0.1:  # 10% случаев
+            if self.verbosity >= 2:
+                self.stdout.write("      🤔 Пауза-раздумье...")
+            time.sleep(random.uniform(2, 6))
+        
+        total_delay = base_delay + extra_delay
+        time.sleep(total_delay)
 
     def get_queryset(self, type_slugs):
         """Получение queryset для обработки с умным определением стартовой позиции"""
@@ -383,11 +600,12 @@ class Command(BaseCommand):
         
         else:
             # Обычный режим - находим первую запись с пустым abstract
+            # (с учетом сортировки от новых к старым)
             self.start_id = self.find_first_empty_abstract(queryset, ip_types)
             
             if self.start_id:
                 self.stdout.write(self.style.WARNING(
-                    f"🎯 Начинаем с ID {self.start_id} (первая запись с пустым abstract)"
+                    f"🎯 Начинаем с ID {self.start_id} (первая запись с пустым abstract в сортировке от новых к старым)"
                 ))
                 queryset = queryset.filter(id__gte=self.start_id)
             else:
@@ -409,6 +627,7 @@ class Command(BaseCommand):
     def find_first_empty_abstract(self, queryset, ip_types):
         """
         Находит первую запись с пустым abstract для типов, у которых abstract является основным полем
+        Учитывает сортировку от новых к старым
         """
         # Собираем типы, у которых есть поле abstract как основное
         types_with_abstract = []
@@ -425,7 +644,10 @@ class Command(BaseCommand):
             ))
             return None
         
-        # Ищем первую запись с пустым abstract
+        # Определяем порядок сортировки
+        order_by = '-registration_date' if self.order_desc else 'registration_date'
+        
+        # Ищем первую запись с пустым abstract в отсортированном списке
         empty_abstract_qs = IPObject.objects.filter(
             ip_type__in=types_with_abstract,
             publication_url__isnull=False
@@ -433,7 +655,7 @@ class Command(BaseCommand):
             publication_url=''
         ).filter(
             Q(abstract__isnull=True) | Q(abstract='')
-        ).order_by('id')  # Сортируем по возрастанию ID, чтобы найти самую старую пустую
+        ).order_by(order_by, 'id')  # Сортируем по дате и ID
         
         first_empty = empty_abstract_qs.first()
         
@@ -547,6 +769,9 @@ class Command(BaseCommand):
                 self.stats['skipped'] += 1
                 return
         
+        # Ротация заголовков перед запросом
+        self.rotate_headers()
+        
         # Загружаем страницу
         html_content = self.fetch_page(ip_object.publication_url)
         
@@ -596,6 +821,11 @@ class Command(BaseCommand):
         """Загрузка страницы по URL с детектором блокировки"""
         try:
             self.request_count += 1
+            
+            # Небольшая случайная задержка перед запросом (как будто пользователь нажимает ссылку)
+            if self.human_mode and random.random() < 0.3:
+                click_delay = random.uniform(0.3, 1.5)
+                time.sleep(click_delay)
             
             response = self.session.get(url, timeout=self.timeout)
             
@@ -731,7 +961,7 @@ class Command(BaseCommand):
         
         self.stdout.write(self.style.WARNING("\n📌 Рекомендации:"))
         self.stdout.write("   1. Увеличьте задержку между запросами (--delay 3-5)")
-        self.stdout.write("   2. Используйте случайную задержку (--random-delay)")
+        self.stdout.write("   2. Используйте случайную задержку (--random-delay включен по умолчанию)")
         self.stdout.write("   3. Уменьшите количество запросов (--max-requests)")
         self.stdout.write("   4. Подождите указанное время до разблокировки")
         
@@ -932,16 +1162,6 @@ class Command(BaseCommand):
                     return True
         
         return False
-
-    def apply_delay(self):
-        """Применение задержки между запросами"""
-        if self.delay > 0 and not self.block_detected:
-            if self.random_delay:
-                delay = random.uniform(self.delay * 0.5, self.delay * 1.5)
-            else:
-                delay = self.delay
-            
-            time.sleep(delay)
 
     def print_final_stats(self):
         """Вывод итоговой статистики"""
