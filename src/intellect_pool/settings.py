@@ -61,6 +61,7 @@ THIRD_PARTY_APPS = [
     'sass_processor',        # Компилятор SASS/SCSS
     'widget_tweaks',         # Улучшение виджетов форм
     'django_cleanup.apps.CleanupConfig',  # Автоочистка неиспользуемых файлов
+    'django_filters'         # Фильтрация данных
 ]
 
 # Кастомные приложения проекта

@@ -1,6 +1,6 @@
 from django.views.generic import ListView
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.core.paginator import Paginator
 from django.db import models
 import django_filters
@@ -66,6 +66,14 @@ class IPObjectListView(LoginRequiredMixin, ListView):
             Prefetch('images', 
                     queryset=IPImage.objects.all().only('id', 'image', 'title', 'is_main')),
         )
+        
+        # Если нет параметров фильтрации в GET, показываем только записи с непустым abstract
+        if not self.request.GET:
+            queryset = queryset.filter(
+                Q(abstract__isnull=False) & 
+                ~Q(abstract='')
+            )
+        
         return queryset
 
     def get_context_data(self, **kwargs):
@@ -74,9 +82,9 @@ class IPObjectListView(LoginRequiredMixin, ListView):
         # Получаем базовый queryset
         base_queryset = self.get_queryset()
         
-        # Применяем фильтр
+        # Применяем фильтр из GET параметров
         ip_filter = IPObjectFilter(self.request.GET, queryset=base_queryset)
-        filtered_qs = ip_filter.qs
+        filtered_qs = ip_filter.qs.distinct()  # добавляем distinct() из-за сложных фильтров
         
         # Пагинация
         paginator = Paginator(filtered_qs, self.paginate_by)
