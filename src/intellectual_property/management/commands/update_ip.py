@@ -1,18 +1,24 @@
 """
 Команда для обновления данных РИД путем парсинга страниц ФИПС по publication_url.
 Поддерживает все типы РИД с соответствующими полями для каждого типа.
+
+Логика работы:
+- --force: начинает с начала (обрабатывает все записи подряд)
+- --only-actual: обновляет только поле actual по всем записям
+- обычный запуск: находит первую запись с пустым abstract и начинает с неё
 """
 
 import logging
 import re
 import time
 import random
-from datetime import datetime
+import sys
+from datetime import datetime, date
 from typing import Dict, Any, Optional, List, Tuple
 
 import requests
 from bs4 import BeautifulSoup
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction, models
 from django.db.models import Q, F
 from tqdm import tqdm
@@ -21,6 +27,11 @@ from intellectual_property.models import IPObject, IPType, ProgrammingLanguage, 
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+
+class BlockDetectedException(Exception):
+    """Исключение, возникающее при обнаружении блокировки"""
+    pass
 
 
 class Command(BaseCommand):
@@ -74,13 +85,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--force',
             action='store_true',
-            help='Принудительное обновление даже если поле уже заполнено'
-        )
-        
-        parser.add_argument(
-            '--skip-existing',
-            action='store_true',
-            help='Пропускать записи, у которых уже заполнены целевые поля'
+            help='Принудительное обновление с начала (обрабатывает все записи подряд, даже если поля заполнены)'
         )
         
         parser.add_argument(
@@ -100,7 +105,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--only-actual',
             action='store_true',
-            help='Обновлять только поле actual (статус), пропуская все остальные поля'
+            help='Обновлять только поле actual (статус) по всем записям'
         )
         
         parser.add_argument(
@@ -114,6 +119,25 @@ class Command(BaseCommand):
             '--start-from-oldest',
             action='store_true',
             help='Начинать с самых старых записей (переопределяет --start-from-latest)'
+        )
+        
+        parser.add_argument(
+            '--block-retry-delay',
+            type=int,
+            default=3600,
+            help='Задержка перед повторной попыткой после блокировки в секундах (по умолчанию 3600 - 1 час)'
+        )
+        
+        parser.add_argument(
+            '--auto-retry-after-block',
+            action='store_true',
+            help='Автоматически повторять попытку после блокировки через указанную задержку'
+        )
+        
+        parser.add_argument(
+            '--start-from-id',
+            type=int,
+            help='Начать обработку с конкретного ID (переопределяет автоматическое определение)'
         )
 
     def __init__(self, *args, **kwargs):
@@ -132,30 +156,41 @@ class Command(BaseCommand):
         # Карта полей для каждого типа РИД
         self.type_fields_map = {
             'invention': {
-                'abstract': {'source': 'parse_abstract', 'target': 'abstract'},
-                'claims': {'source': 'parse_claims', 'target': 'claims'},
+                'abstract': {'source': 'parse_abstract', 'target': 'abstract', 'is_main': True},
+                'claims': {'source': 'parse_claims', 'target': 'claims', 'is_main': True},
                 'actual': {'source': 'parse_status', 'target': 'actual'},
             },
             'utility-model': {
-                'abstract': {'source': 'parse_abstract', 'target': 'abstract'},
-                'claims': {'source': 'parse_claims', 'target': 'claims'},
+                'abstract': {'source': 'parse_abstract', 'target': 'abstract', 'is_main': True},
+                'claims': {'source': 'parse_claims', 'target': 'claims', 'is_main': True},
                 'actual': {'source': 'parse_status', 'target': 'actual'},
             },
             'industrial-design': {
                 'actual': {'source': 'parse_status', 'target': 'actual'},
             },
             'integrated-circuit-topology': {
-                'abstract': {'source': 'parse_abstract', 'target': 'abstract'},
+                'abstract': {'source': 'parse_abstract', 'target': 'abstract', 'is_main': True},
             },
             'computer-program': {
-                'abstract': {'source': 'parse_abstract', 'target': 'abstract'},
+                'abstract': {'source': 'parse_abstract', 'target': 'abstract', 'is_main': True},
                 'programming_languages': {'source': 'parse_programming_languages', 'target': 'programming_languages', 'is_m2m': True},
             },
             'database': {
-                'abstract': {'source': 'parse_abstract', 'target': 'abstract'},
+                'abstract': {'source': 'parse_abstract', 'target': 'abstract', 'is_main': True},
                 'dbms': {'source': 'parse_dbms', 'target': 'dbms', 'is_m2m': True},
             },
         }
+        
+        # Паттерны для обнаружения блокировки
+        self.block_patterns = [
+            re.compile(r'Вы заблокированы до\s+(\d{2}\.\d{2}\.\d{4})\s+включительно', re.IGNORECASE),
+            re.compile(r'идентификатор(?:ом)? подключения:?\s*(\d+)', re.IGNORECASE),
+            re.compile(r'доступ\s+заблокирован', re.IGNORECASE),
+            re.compile(r'вы\s+заблокированы', re.IGNORECASE),
+            re.compile(r'your\s+access\s+is\s+blocked', re.IGNORECASE),
+            re.compile(r'too\s+many\s+requests', re.IGNORECASE),
+            re.compile(r'429', re.IGNORECASE),
+        ]
         
         # Статистика
         self.stats = {
@@ -166,11 +201,15 @@ class Command(BaseCommand):
             'skipped': 0,
             'errors': 0,
             'actual_updated': 0,
+            'blocked': 0,
             'by_type': {},
         }
         
         self.session = None
         self.request_count = 0
+        self.block_detected = False
+        self.block_info = {}
+        self.start_id = None  # ID, с которого начинаем обработку
 
     def handle(self, *args, **options):
         self.verbosity = options['verbosity']
@@ -180,10 +219,12 @@ class Command(BaseCommand):
         self.max_requests = options['max_requests']
         self.dry_run = options['dry_run']
         self.force = options['force']
-        self.skip_existing = options['skip_existing']
         self.timeout = options['timeout']
         self.user_agent = options['user_agent']
         self.only_actual = options['only_actual']
+        self.block_retry_delay = options['block_retry_delay']
+        self.auto_retry_after_block = options['auto_retry_after_block']
+        self.start_from_id = options['start_from_id']
         
         # Определяем порядок сортировки
         if options['start_from_oldest']:
@@ -198,48 +239,100 @@ class Command(BaseCommand):
         
         ip_type_param = options['ip_type']
         
-        self.stdout.write(self.style.SUCCESS("\n" + "="*80))
-        self.stdout.write(self.style.SUCCESS("🚀 ЗАПУСК ОБНОВЛЕНИЯ ДАННЫХ РИД"))
-        self.stdout.write(self.style.SUCCESS("="*80))
-        
-        if self.only_actual:
-            self.stdout.write(self.style.WARNING("\n📌 РЕЖИМ: обновление только поля actual (статус)\n"))
-        
-        self.stdout.write(f"📌 Порядок обработки: {order_text}")
-        
-        if self.dry_run:
-            self.stdout.write(self.style.WARNING("\n🔍 РЕЖИМ DRY-RUN: изменения НЕ будут сохранены в БД\n"))
+        self.print_header(order_text)
         
         # Инициализируем сессию
         self.init_session()
         
         # Получаем список типов для обработки
-        if ip_type_param == 'all':
-            type_slugs_to_process = list(self.type_slugs.values())
-            self.stdout.write(f"📋 Обработка всех типов РИД: {', '.join(type_slugs_to_process)}")
-        else:
-            type_slugs_to_process = [self.type_slugs[ip_type_param]]
-            self.stdout.write(f"📋 Обработка типа РИД: {ip_type_param}")
+        type_slugs_to_process = self.get_type_slugs(ip_type_param)
         
         # Инициализируем статистику по типам
         for slug in type_slugs_to_process:
-            self.stats['by_type'][slug] = {'total': 0, 'success': 0, 'failed': 0, 'actual_updated': 0}
+            self.stats['by_type'][slug] = {'total': 0, 'success': 0, 'failed': 0, 'actual_updated': 0, 'blocked': 0}
         
-        # Получаем queryset для обработки
-        queryset = self.get_queryset(type_slugs_to_process)
-        self.stats['total'] = queryset.count()
+        # Основной цикл обработки с поддержкой повторных попыток после блокировки
+        try:
+            self.run_with_block_handling(type_slugs_to_process)
+        except KeyboardInterrupt:
+            self.stdout.write(self.style.WARNING("\n\n⏹️ Обработка прервана пользователем"))
+            self.print_final_stats()
+            sys.exit(1)
+        except BlockDetectedException as e:
+            self.handle_block_detected(str(e))
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"\n💥 Критическая ошибка: {e}"))
+            logger.error(f"Critical error: {e}", exc_info=True)
+            self.print_final_stats()
+            sys.exit(1)
+
+    def print_header(self, order_text):
+        """Вывод заголовка"""
+        self.stdout.write(self.style.SUCCESS("\n" + "="*80))
+        self.stdout.write(self.style.SUCCESS("🚀 ЗАПУСК ОБНОВЛЕНИЯ ДАННЫХ РИД"))
+        self.stdout.write(self.style.SUCCESS("="*80))
         
-        self.stdout.write(f"\n📊 Найдено записей для обработки: {self.stats['total']}")
+        if self.only_actual:
+            self.stdout.write(self.style.WARNING("\n📌 РЕЖИМ: обновление только поля actual (статус)"))
         
-        if self.stats['total'] == 0:
-            self.stdout.write(self.style.WARNING("⚠️ Нет записей для обработки"))
-            return
+        if self.force:
+            self.stdout.write(self.style.WARNING("\n📌 РЕЖИМ: принудительное обновление с начала (--force)"))
         
-        # Обрабатываем по батчам
-        self.process_in_batches(queryset)
+        self.stdout.write(f"\n📌 Порядок обработки: {order_text}")
+        self.stdout.write(f"📌 Защита от блокировки: включена")
         
-        # Выводим итоговую статистику
-        self.print_final_stats()
+        if self.dry_run:
+            self.stdout.write(self.style.WARNING("\n🔍 РЕЖИМ DRY-RUN: изменения НЕ будут сохранены в БД\n"))
+
+    def get_type_slugs(self, ip_type_param):
+        """Получение списка слагов типов для обработки"""
+        if ip_type_param == 'all':
+            type_slugs = list(self.type_slugs.values())
+            self.stdout.write(f"📋 Обработка всех типов РИД: {', '.join(type_slugs)}")
+            return type_slugs
+        else:
+            type_slugs = [self.type_slugs[ip_type_param]]
+            self.stdout.write(f"📋 Обработка типа РИД: {ip_type_param}")
+            return type_slugs
+
+    def run_with_block_handling(self, type_slugs_to_process):
+        """Запуск обработки с обработкой блокировок"""
+        attempt = 1
+        max_attempts = 3 if self.auto_retry_after_block else 1
+        
+        while attempt <= max_attempts:
+            if attempt > 1:
+                self.stdout.write(self.style.WARNING(
+                    f"\n🔄 Попытка {attempt} после блокировки (через {self.block_retry_delay} сек)"
+                ))
+                time.sleep(self.block_retry_delay)
+            
+            try:
+                # Получаем queryset для обработки
+                queryset = self.get_queryset(type_slugs_to_process)
+                self.stats['total'] = queryset.count()
+                
+                self.stdout.write(f"\n📊 Найдено записей для обработки: {self.stats['total']}")
+                
+                if self.stats['total'] == 0:
+                    self.stdout.write(self.style.WARNING("⚠️ Нет записей для обработки"))
+                    return
+                
+                # Обрабатываем по батчам
+                self.process_in_batches(queryset)
+                
+                # Если дошли сюда без исключения - успешно завершили
+                break
+                
+            except BlockDetectedException as e:
+                self.stats['blocked'] += 1
+                self.block_detected = True
+                
+                if attempt < max_attempts:
+                    attempt += 1
+                    continue
+                else:
+                    raise
 
     def init_session(self):
         """Инициализация HTTP-сессии"""
@@ -253,7 +346,7 @@ class Command(BaseCommand):
         })
 
     def get_queryset(self, type_slugs):
-        """Получение queryset для обработки"""
+        """Получение queryset для обработки с умным определением стартовой позиции"""
         # Получаем типы по слагам
         ip_types = IPType.objects.filter(slug__in=type_slugs)
         
@@ -265,33 +358,89 @@ class Command(BaseCommand):
             publication_url=''
         ).select_related('ip_type')
         
-        # Фильтруем по заполненности полей, если нужно
-        if self.skip_existing and not self.force and not self.only_actual:
-            # Строим условия для пропуска уже заполненных полей
-            skip_conditions = Q()
-            
-            for ip_type in ip_types:
-                fields_map = self.type_fields_map.get(ip_type.slug, {})
-                
-                for field_info in fields_map.values():
-                    target_field = field_info['target']
-                    if not field_info.get('is_m2m', False):
-                        # Для обычных полей проверяем, что они пустые
-                        condition = Q(**{f"{target_field}__isnull": True}) | Q(**{f"{target_field}": ''})
-                        skip_conditions &= condition
-            
-            queryset = queryset.filter(skip_conditions)
+        # Определяем стартовую позицию
+        if self.start_from_id:
+            # Явно указанный ID
+            self.start_id = self.start_from_id
+            self.stdout.write(self.style.WARNING(
+                f"🎯 Старт с явно указанного ID: {self.start_id}"
+            ))
+            queryset = queryset.filter(id__gte=self.start_id)
         
-        # Применяем сортировку - ИСПРАВЛЕНО: убираем сложную логику с nulls_last
+        elif self.force:
+            # Режим force - начинаем с начала, обрабатываем все
+            self.stdout.write(self.style.WARNING(
+                "🎯 Режим --force: начинаем с начала, обрабатываем все записи"
+            ))
+            # Ничего не фильтруем дополнительно
+        
+        elif self.only_actual:
+            # Режим only-actual - обновляем статус у всех
+            self.stdout.write(self.style.WARNING(
+                "🎯 Режим --only-actual: обновляем статус у всех записей"
+            ))
+            # Ничего не фильтруем, берем все
+        
+        else:
+            # Обычный режим - находим первую запись с пустым abstract
+            self.start_id = self.find_first_empty_abstract(queryset, ip_types)
+            
+            if self.start_id:
+                self.stdout.write(self.style.WARNING(
+                    f"🎯 Начинаем с ID {self.start_id} (первая запись с пустым abstract)"
+                ))
+                queryset = queryset.filter(id__gte=self.start_id)
+            else:
+                self.stdout.write(self.style.SUCCESS(
+                    "✅ Все записи имеют заполненный abstract! Обновлять нечего."
+                ))
+                return IPObject.objects.none()  # Пустой queryset
+        
+        # Применяем сортировку
         if self.order_by:
             order_field = self.order_by
             if self.order_desc:
                 order_field = f'-{order_field}'
             
-            # Простая сортировка без обработки NULL
             queryset = queryset.order_by(order_field)
         
         return queryset
+
+    def find_first_empty_abstract(self, queryset, ip_types):
+        """
+        Находит первую запись с пустым abstract для типов, у которых abstract является основным полем
+        """
+        # Собираем типы, у которых есть поле abstract как основное
+        types_with_abstract = []
+        for ip_type in ip_types:
+            fields_map = self.type_fields_map.get(ip_type.slug, {})
+            for field_key, field_info in fields_map.items():
+                if field_info.get('is_main', False) and field_info['target'] == 'abstract':
+                    types_with_abstract.append(ip_type)
+                    break
+        
+        if not types_with_abstract:
+            self.stdout.write(self.style.WARNING(
+                "⚠️ Нет типов РИД, у которых abstract является основным полем"
+            ))
+            return None
+        
+        # Ищем первую запись с пустым abstract
+        empty_abstract_qs = IPObject.objects.filter(
+            ip_type__in=types_with_abstract,
+            publication_url__isnull=False
+        ).exclude(
+            publication_url=''
+        ).filter(
+            Q(abstract__isnull=True) | Q(abstract='')
+        ).order_by('id')  # Сортируем по возрастанию ID, чтобы найти самую старую пустую
+        
+        first_empty = empty_abstract_qs.first()
+        
+        if first_empty:
+            return first_empty.id
+        
+        return None
 
     def process_in_batches(self, queryset):
         """Обработка записей по батчам"""
@@ -315,8 +464,25 @@ class Command(BaseCommand):
                     ))
                     return
                 
+                # Проверяем, не была ли обнаружена блокировка в предыдущем запросе
+                if self.block_detected:
+                    self.stdout.write(self.style.ERROR(
+                        "\n🚫 Обнаружена блокировка. Остановка обработки."
+                    ))
+                    return
+                
                 # Обрабатываем запись
-                self.process_single_object(ip_object)
+                try:
+                    self.process_single_object(ip_object)
+                except BlockDetectedException:
+                    # Пробрасываем исключение для остановки всего процесса
+                    raise
+                except Exception as e:
+                    # Логируем другие ошибки, но продолжаем
+                    self.stats['errors'] += 1
+                    if self.verbosity >= 1:
+                        self.stdout.write(self.style.ERROR(f"\n❌ Неожиданная ошибка: {e}"))
+                    logger.error(f"Unexpected error processing IPObject {ip_object.id}: {e}", exc_info=True)
                 
                 # Обновляем прогресс
                 pbar.update(1)
@@ -324,6 +490,7 @@ class Command(BaseCommand):
                     'OK': self.stats['success'],
                     'ACT': self.stats['actual_updated'],
                     'ERR': self.stats['failed'],
+                    'BLK': self.stats['blocked'],
                     'REQ': self.request_count
                 })
                 
@@ -371,6 +538,15 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(f"   ⚠️ Нет карты полей для типа {type_slug}"))
             return
         
+        # В обычном режиме (не force и не only-actual) пропускаем, если abstract уже заполнен
+        if not self.force and not self.only_actual:
+            # Проверяем, заполнено ли основное поле (abstract)
+            if ip_object.abstract and ip_object.abstract.strip():
+                if self.verbosity >= 2:
+                    self.stdout.write(self.style.WARNING(f"   ⚠️ Abstract уже заполнен, пропуск"))
+                self.stats['skipped'] += 1
+                return
+        
         # Загружаем страницу
         html_content = self.fetch_page(ip_object.publication_url)
         
@@ -417,14 +593,22 @@ class Command(BaseCommand):
             logger.error(f"Error parsing IPObject {ip_object.id}: {e}", exc_info=True)
 
     def fetch_page(self, url):
-        """Загрузка страницы по URL"""
+        """Загрузка страницы по URL с детектором блокировки"""
         try:
             self.request_count += 1
             
             response = self.session.get(url, timeout=self.timeout)
+            
+            # Проверяем HTTP статус на блокировку
+            if response.status_code == 429:
+                self.detect_block(response.text, url, status_code=429)
+            
             response.encoding = 'windows-1251'  # ФИПС использует windows-1251
             
             if response.status_code == 200:
+                # Проверяем содержимое на признаки блокировки
+                self.check_for_block(response.text, url)
+                
                 if self.verbosity >= 3:
                     self.stdout.write(f"   📥 Загружено {len(response.text)} символов")
                 return response.text
@@ -441,10 +625,118 @@ class Command(BaseCommand):
             if self.verbosity >= 2:
                 self.stdout.write(self.style.ERROR(f"   🔌 Ошибка соединения"))
             return None
+        except BlockDetectedException:
+            # Пробрасываем исключение о блокировке
+            raise
         except Exception as e:
             if self.verbosity >= 2:
                 self.stdout.write(self.style.ERROR(f"   ❌ Ошибка: {e}"))
             return None
+
+    def check_for_block(self, html_content, url):
+        """Проверка HTML-содержимого на наличие признаков блокировки"""
+        if not html_content:
+            return
+        
+        # Проверяем по всем паттернам
+        for pattern in self.block_patterns:
+            match = pattern.search(html_content)
+            if match:
+                self.detect_block(html_content, url, pattern_match=match)
+                return
+
+    def detect_block(self, html_content, url, status_code=None, pattern_match=None):
+        """
+        Обнаружение блокировки и генерация исключения
+        """
+        block_info = {
+            'url': url,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'status_code': status_code,
+            'request_count': self.request_count,
+        }
+        
+        # Пытаемся извлечь дату блокировки
+        date_pattern = re.compile(r'Вы заблокированы до\s+(\d{2}\.\d{2}\.\d{4})\s+включительно', re.IGNORECASE)
+        date_match = date_pattern.search(html_content)
+        if date_match:
+            block_info['block_until'] = date_match.group(1)
+        
+        # Пытаемся извлечь ID подключения
+        id_pattern = re.compile(r'идентификатор(?:ом)? подключения:?\s*(\d+)', re.IGNORECASE)
+        id_match = id_pattern.search(html_content)
+        if id_match:
+            block_info['connection_id'] = id_match.group(1)
+        
+        self.block_info = block_info
+        self.block_detected = True
+        self.stats['blocked'] += 1
+        
+        # Формируем сообщение о блокировке
+        message = self.format_block_message(block_info)
+        
+        # Выводим сообщение
+        self.stdout.write(self.style.ERROR(f"\n{'='*80}"))
+        self.stdout.write(self.style.ERROR("🚫 ОБНАРУЖЕНА БЛОКИРОВКА"))
+        self.stdout.write(self.style.ERROR(f"{'='*80}"))
+        self.stdout.write(self.style.ERROR(message))
+        self.stdout.write(self.style.ERROR(f"{'='*80}\n"))
+        
+        # Логируем
+        logger.warning(f"Block detected: {block_info}")
+        
+        # Генерируем исключение
+        raise BlockDetectedException(message)
+
+    def format_block_message(self, block_info):
+        """Форматирование сообщения о блокировке"""
+        lines = []
+        lines.append(f"🔸 URL: {block_info['url']}")
+        lines.append(f"🔸 Время: {block_info['timestamp']}")
+        lines.append(f"🔸 Выполнено запросов до блокировки: {block_info['request_count']}")
+        
+        if block_info.get('status_code'):
+            lines.append(f"🔸 HTTP статус: {block_info['status_code']}")
+        
+        if block_info.get('block_until'):
+            lines.append(f"🔸 Заблокирован до: {block_info['block_until']} включительно")
+            
+            # Рассчитываем оставшееся время
+            try:
+                block_date = datetime.strptime(block_info['block_until'], '%d.%m.%Y').date()
+                today = date.today()
+                days_left = (block_date - today).days
+                if days_left > 0:
+                    lines.append(f"🔸 Осталось дней: {days_left}")
+            except:
+                pass
+        
+        if block_info.get('connection_id'):
+            lines.append(f"🔸 ID подключения: {block_info['connection_id']}")
+            lines.append(f"🔸 Для разблокировки напишите в техподдержку с указанием этого ID")
+        
+        return '\n'.join(lines)
+
+    def handle_block_detected(self, message):
+        """Обработка обнаруженной блокировки"""
+        self.stdout.write(self.style.ERROR("\n" + "="*80))
+        self.stdout.write(self.style.ERROR("🚫 РАБОТА ПРЕРВАНА ИЗ-ЗА БЛОКИРОВКИ"))
+        self.stdout.write(self.style.ERROR("="*80))
+        self.stdout.write(self.style.ERROR(message))
+        
+        if self.auto_retry_after_block:
+            self.stdout.write(self.style.WARNING(
+                f"\n🔄 Автоматический повтор через {self.block_retry_delay} сек не удался (превышено количество попыток)"
+            ))
+        
+        self.stdout.write(self.style.WARNING("\n📌 Рекомендации:"))
+        self.stdout.write("   1. Увеличьте задержку между запросами (--delay 3-5)")
+        self.stdout.write("   2. Используйте случайную задержку (--random-delay)")
+        self.stdout.write("   3. Уменьшите количество запросов (--max-requests)")
+        self.stdout.write("   4. Подождите указанное время до разблокировки")
+        
+        self.print_final_stats()
+        sys.exit(1)
 
     def parse_page(self, html, type_slug, fields_map):
         """Парсинг страницы в соответствии с типом РИД"""
@@ -521,7 +813,6 @@ class Command(BaseCommand):
                     status_text = status_value.get_text(strip=True).lower()
                     
                     # Проверяем наличие слова "действует" в любом контексте
-                    # "Действует", "действует", "действует с", "действует до" и т.д.
                     if re.search(r'действует', status_text):
                         return True
                     else:
@@ -531,20 +822,15 @@ class Command(BaseCommand):
 
     def parse_programming_languages(self, soup, type_slug):
         """Парсинг языков программирования для программ ЭВМ"""
-        # Ищем строку с языком программирования
         b_tag = soup.find('b', string=re.compile(r'Язык программирования:', re.IGNORECASE))
         
         if b_tag:
-            # Ищем текст в кавычках после тега <b>
             parent = b_tag.parent
             if parent:
                 full_text = parent.get_text()
-                # Ищем текст в кавычках
                 quoted = re.findall(r'"([^"]*)"', full_text)
                 if quoted:
-                    # Берем первое вхождение в кавычках
                     languages_str = quoted[0]
-                    # Разделяем по запятым, если несколько языков
                     languages = [lang.strip() for lang in languages_str.split(',')]
                     return languages
         
@@ -552,19 +838,15 @@ class Command(BaseCommand):
 
     def parse_dbms(self, soup, type_slug):
         """Парсинг СУБД для баз данных"""
-        # Ищем строку с СУБД
         b_tag = soup.find('b', string=re.compile(r'Вид и версия системы управления базой данных:', re.IGNORECASE))
         
         if b_tag:
             parent = b_tag.parent
             if parent:
                 full_text = parent.get_text()
-                # Ищем текст в кавычках
                 quoted = re.findall(r'"([^"]*)"', full_text)
                 if quoted:
-                    # Берем первое вхождение в кавычках
                     dbms_str = quoted[0]
-                    # Разделяем по запятым, если несколько СУБД
                     dbms_list = [db.strip() for db in dbms_str.split(',')]
                     return dbms_list
         
@@ -573,7 +855,6 @@ class Command(BaseCommand):
     def update_object(self, ip_object, parsed_data, fields_map):
         """Обновление объекта РИД"""
         if self.dry_run:
-            # В режиме dry-run просто показываем, что бы обновилось
             if self.verbosity >= 2:
                 self.stdout.write("   📝 DRY-RUN: данные для обновления:")
                 for target_field, field_data in parsed_data.items():
@@ -596,7 +877,6 @@ class Command(BaseCommand):
                 is_m2m = field_data.get('is_m2m', False)
                 
                 if is_m2m:
-                    # Для ManyToMany полей
                     if target_field == 'programming_languages':
                         updated |= self.update_m2m_field(
                             ip_object, 
@@ -612,7 +892,6 @@ class Command(BaseCommand):
                             value
                         )
                 else:
-                    # Для обычных полей
                     current_value = getattr(ip_object, target_field)
                     
                     if self.force or current_value != value:
@@ -632,10 +911,8 @@ class Command(BaseCommand):
         if not values:
             return False
         
-        # Получаем текущий менеджер
         manager = getattr(ip_object, field_name)
         
-        # Находим или создаем объекты
         objects_to_add = []
         for value in values:
             if isinstance(value, str) and value.strip():
@@ -643,13 +920,11 @@ class Command(BaseCommand):
                 objects_to_add.append(obj)
         
         if objects_to_add:
-            # Если force, очищаем и добавляем новые
             if self.force:
                 manager.clear()
                 manager.add(*objects_to_add)
                 return True
             else:
-                # Иначе добавляем только новые
                 existing = set(manager.all())
                 new_objects = [obj for obj in objects_to_add if obj not in existing]
                 if new_objects:
@@ -660,9 +935,8 @@ class Command(BaseCommand):
 
     def apply_delay(self):
         """Применение задержки между запросами"""
-        if self.delay > 0:
+        if self.delay > 0 and not self.block_detected:
             if self.random_delay:
-                # Случайная задержка от 0.5 до 1.5 от указанной
                 delay = random.uniform(self.delay * 0.5, self.delay * 1.5)
             else:
                 delay = self.delay
@@ -678,8 +952,13 @@ class Command(BaseCommand):
         self.stdout.write(f"📁 Всего записей: {self.stats['total']}")
         self.stdout.write(f"📝 Обработано: {self.stats['processed']}")
         self.stdout.write(f"✅ Успешно обновлено: {self.stats['success']}")
+        
         if self.stats['actual_updated'] > 0:
             self.stdout.write(f"🔄 Обновлено поле actual: {self.stats['actual_updated']}")
+        
+        if self.stats['blocked'] > 0:
+            self.stdout.write(self.style.ERROR(f"🚫 Обнаружено блокировок: {self.stats['blocked']}"))
+        
         self.stdout.write(f"❌ Неудачно: {self.stats['failed']}")
         self.stdout.write(f"⏭️  Пропущено: {self.stats['skipped']}")
         
@@ -688,19 +967,29 @@ class Command(BaseCommand):
         
         self.stdout.write(f"📡 Выполнено запросов: {self.request_count}")
         
+        if self.start_id:
+            self.stdout.write(f"🎯 Стартовая позиция: ID {self.start_id}")
+        
         # Статистика по типам
-        self.stdout.write(self.style.SUCCESS("\n📊 ПО ТИПАМ РИД:"))
-        for type_slug, stats in self.stats['by_type'].items():
-            if stats['total'] > 0:
-                success_rate = (stats['success'] / stats['total']) * 100 if stats['total'] > 0 else 0
-                actual_info = f", actual={stats['actual_updated']}" if stats['actual_updated'] > 0 else ""
-                self.stdout.write(
-                    f"   {type_slug}: всего={stats['total']}, "
-                    f"✅={stats['success']}, ❌={stats['failed']}{actual_info}, "
-                    f"({success_rate:.1f}%)"
-                )
+        if any(stats['total'] > 0 for stats in self.stats['by_type'].values()):
+            self.stdout.write(self.style.SUCCESS("\n📊 ПО ТИПАМ РИД:"))
+            for type_slug, stats in self.stats['by_type'].items():
+                if stats['total'] > 0:
+                    success_rate = (stats['success'] / stats['total']) * 100 if stats['total'] > 0 else 0
+                    actual_info = f", actual={stats['actual_updated']}" if stats['actual_updated'] > 0 else ""
+                    blocked_info = f", блок={stats['blocked']}" if stats['blocked'] > 0 else ""
+                    self.stdout.write(
+                        f"   {type_slug}: всего={stats['total']}, "
+                        f"✅={stats['success']}, ❌={stats['failed']}{actual_info}{blocked_info}, "
+                        f"({success_rate:.1f}%)"
+                    )
         
         if self.dry_run:
             self.stdout.write(self.style.WARNING("\n🔍 РЕЖИМ DRY-RUN: изменения НЕ сохранены в БД"))
+        
+        if self.block_detected:
+            self.stdout.write(self.style.ERROR("\n🚫 РАБОТА ПРЕРВАНА ИЗ-ЗА БЛОКИРОВКИ"))
+            if self.block_info:
+                self.stdout.write(self.style.ERROR(self.format_block_message(self.block_info)))
         
         self.stdout.write(self.style.SUCCESS("="*80))
