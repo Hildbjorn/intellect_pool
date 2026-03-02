@@ -1,0 +1,1583 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Реестр РИД - IntellectPool</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <style>
+        /* =============================================
+            CSS-ПЕРЕМЕННЫЕ - ЦВЕТОВАЯ СХЕМА ПРОЕКТА
+        ============================================= */
+        :root {
+            --primary-blue: #2C5AA0;
+            --primary-blue-dark: #1E3A6B;
+            --primary-blue-darker: #0F1D36;
+            --primary-blue-light: #4A7DB5;
+            --primary-blue-lighter: #E8F0FE;
+
+            --secondary-gray: #64748B;
+            --secondary-gray-light: #F1F5F9;
+            --secondary-gray-lighter: #F8FAFC;
+
+            --success-green: #10B981;
+            --success-green-light: #D1FAE5;
+            --warning-orange: #F59E0B;
+            --warning-orange-light: #FEF3C7;
+            --danger-red: #EF4444;
+            --danger-red-light: #FEE2E2;
+            --info-blue: #3B82F6;
+            --info-blue-light: #DBEAFE;
+
+            --dark-text: #1E293B;
+            --gray-text: #64748B;
+            --light-text: #FFFFFF;
+
+            --border-light: #E2E8F0;
+            --border-medium: #CBD5E1;
+
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+            --transition-base: all 0.2s ease-in-out;
+            --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+            --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+        }
+
+        /* =============================================
+            БАЗОВЫЕ СТИЛИ
+        ============================================= */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background: linear-gradient(135deg, var(--secondary-gray-lighter) 0%, var(--secondary-gray-light) 100%);
+            color: var(--dark-text);
+            line-height: 1.5;
+            min-height: 100vh;
+            font-weight: 400;
+        }
+
+        /* =============================================
+            ЗАГОЛОВОК СТРАНИЦЫ
+        ============================================= */
+        .page-header {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-darker) 100%);
+            color: var(--light-text);
+            padding: 2.5rem 0 2rem;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .page-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .page-header::after {
+            content: '';
+            position: absolute;
+            bottom: -50%;
+            left: -10%;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.08) 0%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .page-header .container {
+            position: relative;
+            z-index: 2;
+        }
+
+        .page-header h1 {
+            font-weight: 800;
+            font-size: 2.5rem;
+            margin-bottom: 0.75rem;
+            letter-spacing: -0.02em;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .page-header .lead {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            max-width: 800px;
+            font-weight: 400;
+        }
+
+        .stats-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            padding: 0.75rem 1.5rem;
+            border-radius: 100px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            font-weight: 500;
+            margin-top: 1rem;
+        }
+
+        .stats-badge i {
+            font-size: 1.2rem;
+        }
+
+        /* =============================================
+            КАРТОЧКА ФИЛЬТРОВ
+        ============================================= */
+        .filter-card {
+            background: white;
+            border-radius: 1rem;
+            box-shadow: var(--shadow-lg);
+            margin-bottom: 2rem;
+            border: 1px solid var(--border-light);
+            overflow: hidden;
+        }
+
+        .filter-header {
+            background: linear-gradient(90deg, var(--secondary-gray-light) 0%, white 100%);
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .filter-header h6 {
+            margin: 0;
+            font-weight: 600;
+            color: var(--dark-text);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .filter-header h6 i {
+            color: var(--primary-blue);
+        }
+
+        .filter-header small {
+            color: var(--gray-text);
+            font-size: 0.85rem;
+        }
+
+        .filter-body {
+            padding: 1.5rem;
+        }
+
+        .filter-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .filter-group label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--gray-text);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.25rem;
+        }
+
+        .filter-group input,
+        .filter-group select {
+            padding: 0.6rem 1rem;
+            border: 1px solid var(--border-medium);
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+            font-family: var(--font-family);
+            transition: var(--transition-base);
+        }
+
+        .filter-group input:focus,
+        .filter-group select:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 3px rgba(44, 90, 160, 0.1);
+        }
+
+        .filter-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 0.5rem;
+        }
+
+        .btn-filter {
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+            padding: 0.6rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: var(--transition-base);
+            cursor: pointer;
+        }
+
+        .btn-filter:hover {
+            background: var(--primary-blue-dark);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-filter:active {
+            transform: translateY(0);
+        }
+
+        .btn-reset {
+            background: white;
+            color: var(--gray-text);
+            border: 1px solid var(--border-medium);
+            padding: 0.6rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: var(--transition-base);
+            cursor: pointer;
+        }
+
+        .btn-reset:hover {
+            background: var(--secondary-gray-light);
+            color: var(--dark-text);
+            border-color: var(--gray-text);
+        }
+
+        /* =============================================
+            ПАНЕЛЬ ИНСТРУМЕНТОВ
+        ============================================= */
+        .tools-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .btn-columns {
+            background: white;
+            border: 1px solid var(--border-medium);
+            color: var(--dark-text);
+            padding: 0.6rem 1.25rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: var(--transition-base);
+            cursor: pointer;
+        }
+
+        .btn-columns:hover {
+            background: var(--secondary-gray-light);
+            border-color: var(--primary-blue);
+            color: var(--primary-blue);
+        }
+
+        .scroll-hint {
+            color: var(--gray-text);
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .scroll-hint i {
+            font-size: 1rem;
+        }
+
+        /* =============================================
+            ПАНЕЛЬ ВЫБОРА КОЛОНОК
+        ============================================= */
+        .columns-panel {
+            background: white;
+            border-radius: 1rem;
+            box-shadow: var(--shadow-lg);
+            margin-bottom: 2rem;
+            border: 1px solid var(--border-light);
+            overflow: hidden;
+        }
+
+        .columns-panel .card-body {
+            padding: 1.5rem;
+            background: var(--secondary-gray-lighter);
+        }
+
+        .columns-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .column-check {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0.75rem;
+            background: white;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-light);
+            transition: var(--transition-base);
+        }
+
+        .column-check:hover {
+            border-color: var(--primary-blue);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .column-check input[type="checkbox"] {
+            width: 1rem;
+            height: 1rem;
+            cursor: pointer;
+            accent-color: var(--primary-blue);
+        }
+
+        .column-check label {
+            font-size: 0.9rem;
+            color: var(--dark-text);
+            cursor: pointer;
+            flex: 1;
+        }
+
+        .column-check label i {
+            margin-right: 0.25rem;
+            color: var(--primary-blue);
+            font-size: 0.85rem;
+        }
+
+        .column-check .active-badge {
+            color: var(--success-green);
+            font-size: 0.8rem;
+        }
+
+        .column-check .inactive-badge {
+            color: var(--gray-text);
+            font-size: 0.8rem;
+        }
+
+        .columns-note {
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            color: var(--gray-text);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(44, 90, 160, 0.05);
+            border-radius: 0.5rem;
+        }
+
+        /* =============================================
+            ТАБЛИЦА РИД
+        ============================================= */
+        .table-container {
+            background: white;
+            border-radius: 1rem;
+            box-shadow: var(--shadow-xl);
+            border: 1px solid var(--border-light);
+            overflow: hidden;
+            margin-bottom: 2rem;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary-blue-light) var(--border-light);
+        }
+
+        .table-responsive::-webkit-scrollbar {
+            height: 10px;
+        }
+
+        .table-responsive::-webkit-scrollbar-track {
+            background: var(--border-light);
+            border-radius: 5px;
+        }
+
+        .table-responsive::-webkit-scrollbar-thumb {
+            background: var(--primary-blue-light);
+            border-radius: 5px;
+        }
+
+        .table-responsive::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-blue);
+        }
+
+        #ipTable {
+            min-width: 2000px;
+            margin-bottom: 0;
+            font-size: 0.85rem;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        #ipTable thead th {
+            position: sticky;
+            top: 0;
+            background: linear-gradient(180deg, var(--primary-blue) 0%, var(--primary-blue-dark) 100%);
+            color: white;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.5px;
+            padding: 1rem 0.75rem;
+            white-space: nowrap;
+            border: none;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 10;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+
+        #ipTable thead th:last-child {
+            border-right: none;
+        }
+
+        #ipTable thead th[data-column] {
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        #ipTable thead th[data-column]:hover {
+            background: linear-gradient(180deg, var(--primary-blue-dark) 0%, var(--primary-blue-darker) 100%);
+        }
+
+        #ipTable thead th[data-column]::after {
+            content: "↕️";
+            margin-left: 0.5rem;
+            opacity: 0.5;
+            font-size: 0.7rem;
+            filter: invert(1);
+        }
+
+        #ipTable tbody td {
+            padding: 0.85rem 0.75rem;
+            vertical-align: middle;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--border-light);
+            border-right: 1px solid var(--border-light);
+            background: white;
+            transition: background-color 0.2s ease;
+        }
+
+        #ipTable tbody td:last-child {
+            border-right: none;
+        }
+
+        #ipTable tbody tr {
+            transition: all 0.2s ease;
+        }
+
+        #ipTable tbody tr:hover td {
+            background-color: var(--primary-blue-lighter);
+        }
+
+        #ipTable tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Стили для содержимого ячеек */
+        .badge-rid-type {
+            background: var(--secondary-gray-light);
+            color: var(--dark-text);
+            font-weight: 500;
+            font-size: 0.7rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 100px;
+            border: 1px solid var(--border-medium);
+            display: inline-block;
+            white-space: normal;
+            word-break: break-word;
+            max-width: 150px;
+        }
+
+        .badge-year {
+            background: var(--secondary-gray-lighter);
+            color: var(--gray-text);
+            font-weight: 500;
+            font-size: 0.7rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 100px;
+            border: 1px solid var(--border-light);
+        }
+
+        .owner-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            margin-right: 0.5rem;
+            color: var(--dark-text);
+        }
+
+        .owner-item i {
+            font-size: 0.8rem;
+        }
+
+        .owner-item .bi-building {
+            color: var(--primary-blue);
+        }
+
+        .owner-item .bi-person {
+            color: var(--success-green);
+        }
+
+        .owner-count {
+            color: var(--gray-text);
+            font-size: 0.75rem;
+            margin-left: 0.25rem;
+        }
+
+        .link-fips {
+            color: var(--primary-blue);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-weight: 500;
+        }
+
+        .link-fips:hover {
+            color: var(--primary-blue-dark);
+            text-decoration: underline;
+        }
+
+        .link-fips i {
+            font-size: 0.7rem;
+            color: var(--info-blue);
+        }
+
+        .icon-popover {
+            color: var(--gray-text);
+            cursor: help;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .icon-popover:hover {
+            color: var(--primary-blue);
+            transform: scale(1.1);
+        }
+
+        .icon-popover.bi-file-text {
+            color: var(--info-blue);
+        }
+
+        .icon-popover.bi-code-square {
+            color: var(--primary-blue);
+        }
+
+        .icon-popover.bi-database {
+            color: var(--warning-orange);
+        }
+
+        .icon-popover.bi-file-earmark-text {
+            color: var(--secondary-gray);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.35rem 0.75rem;
+            border-radius: 100px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .status-active {
+            background: var(--success-green-light);
+            color: var(--success-green);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .status-inactive {
+            background: var(--danger-red-light);
+            color: var(--danger-red);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        .text-expired {
+            color: var(--danger-red);
+            font-weight: 500;
+        }
+
+        .text-valid {
+            color: var(--success-green);
+            font-weight: 500;
+        }
+
+        .tooltip-icon {
+            border-bottom: 1px dashed var(--gray-text);
+            cursor: help;
+        }
+
+        /* Скрытые колонки */
+        .d-none {
+            display: none !important;
+        }
+
+        /* Пустое состояние */
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--gray-text);
+        }
+
+        .empty-state i {
+            font-size: 4rem;
+            opacity: 0.3;
+            margin-bottom: 1rem;
+        }
+
+        .empty-state h5 {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--dark-text);
+        }
+
+        .empty-state p {
+            color: var(--gray-text);
+        }
+
+        /* =============================================
+            ПАГИНАЦИЯ
+        ============================================= */
+        .pagination-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .pagination {
+            display: flex;
+            gap: 0.5rem;
+            list-style: none;
+            padding: 0;
+        }
+
+        .page-item {
+            margin: 0;
+        }
+
+        .page-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            height: 40px;
+            padding: 0 0.75rem;
+            background: white;
+            border: 1px solid var(--border-medium);
+            border-radius: 0.5rem;
+            color: var(--dark-text);
+            font-weight: 500;
+            text-decoration: none;
+            transition: var(--transition-base);
+        }
+
+        .page-link:hover {
+            background: var(--primary-blue-lighter);
+            border-color: var(--primary-blue);
+            color: var(--primary-blue);
+        }
+
+        .page-item.active .page-link {
+            background: var(--primary-blue);
+            border-color: var(--primary-blue);
+            color: white;
+            font-weight: 600;
+        }
+
+        .page-item.disabled .page-link {
+            opacity: 0.5;
+            pointer-events: none;
+            background: var(--secondary-gray-lighter);
+        }
+
+        /* =============================================
+            АНИМАЦИИ
+        ============================================= */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes rowFadeIn {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .filter-card,
+        .tools-panel,
+        .table-container,
+        .pagination-container {
+            animation: fadeInUp 0.6s ease-out forwards;
+        }
+
+        .tools-panel {
+            animation-delay: 0.1s;
+        }
+
+        .table-container {
+            animation-delay: 0.2s;
+        }
+
+        .pagination-container {
+            animation-delay: 0.3s;
+        }
+
+        #ipTable tbody tr {
+            animation: rowFadeIn 0.3s ease forwards;
+            opacity: 0;
+        }
+
+        #ipTable tbody tr:nth-child(1) {
+            animation-delay: 0.02s;
+        }
+
+        #ipTable tbody tr:nth-child(2) {
+            animation-delay: 0.04s;
+        }
+
+        #ipTable tbody tr:nth-child(3) {
+            animation-delay: 0.06s;
+        }
+
+        #ipTable tbody tr:nth-child(4) {
+            animation-delay: 0.08s;
+        }
+
+        #ipTable tbody tr:nth-child(5) {
+            animation-delay: 0.10s;
+        }
+
+        #ipTable tbody tr:nth-child(6) {
+            animation-delay: 0.12s;
+        }
+
+        #ipTable tbody tr:nth-child(7) {
+            animation-delay: 0.14s;
+        }
+
+        #ipTable tbody tr:nth-child(8) {
+            animation-delay: 0.16s;
+        }
+
+        #ipTable tbody tr:nth-child(9) {
+            animation-delay: 0.18s;
+        }
+
+        #ipTable tbody tr:nth-child(10) {
+            animation-delay: 0.20s;
+        }
+
+        /* =============================================
+            АДАПТИВНОСТЬ
+        ============================================= */
+        @media (max-width: 1200px) {
+            .page-header h1 {
+                font-size: 2rem;
+            }
+
+            .filter-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .page-header {
+                padding: 2rem 0 1.5rem;
+            }
+
+            .page-header h1 {
+                font-size: 1.75rem;
+            }
+
+            .filter-row {
+                grid-template-columns: 1fr;
+            }
+
+            .tools-panel {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .columns-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .pagination {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .columns-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .filter-actions {
+                flex-direction: column;
+            }
+
+            .btn-filter,
+            .btn-reset {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Шапка страницы -->
+    <header class="page-header">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+                <div>
+                    <h1>
+                        <i class="bi bi-file-earmark-text me-3"></i>
+                        Реестр РИД
+                    </h1>
+                    <p class="lead">Результаты интеллектуальной деятельности — полный каталог патентов и разработок</p>
+                </div>
+                <div class="stats-badge">
+                    <i class="bi bi-database"></i>
+                    <span>Всего записей: <strong>1,547</strong></span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mb-5">
+        <!-- Карточка фильтров -->
+        <div class="filter-card">
+            <div class="filter-header">
+                <h6>
+                    <i class="bi bi-funnel"></i>
+                    Фильтры и поиск
+                </h6>
+                <small>
+                    <i class="bi bi-keyboard me-1"></i>
+                    Ctrl+F — поиск, Esc — сброс
+                </small>
+            </div>
+            <div class="filter-body">
+                <form id="filter-form">
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label>Наименование РИД</label>
+                            <input type="text" placeholder="Поиск по названию...">
+                        </div>
+                        <div class="filter-group">
+                            <label>Рег. номер</label>
+                            <input type="text" placeholder="Номер...">
+                        </div>
+                        <div class="filter-group">
+                            <label>Вид РИД</label>
+                            <select>
+                                <option>Все виды</option>
+                                <option>Изобретение</option>
+                                <option>Полезная модель</option>
+                                <option>Промышленный образец</option>
+                                <option>Программа для ЭВМ</option>
+                                <option>База данных</option>
+                                <option>Топология ИМС</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Статус</label>
+                            <select>
+                                <option>Все</option>
+                                <option>Действует</option>
+                                <option>Не действует</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label>Автор</label>
+                            <input type="text" placeholder="Фамилия автора...">
+                        </div>
+                        <div class="filter-group">
+                            <label>Правообладатель</label>
+                            <input type="text" placeholder="Название или ФИО...">
+                        </div>
+                        <div class="filter-group">
+                            <label>Год регистрации от</label>
+                            <input type="number" placeholder="2020" min="1900" max="2030">
+                        </div>
+                        <div class="filter-group">
+                            <label>до</label>
+                            <input type="number" placeholder="2026" min="1900" max="2030">
+                        </div>
+                    </div>
+                    <div class="filter-actions">
+                        <button type="submit" class="btn-filter">
+                            <i class="bi bi-search"></i>
+                            Применить фильтры
+                        </button>
+                        <button type="reset" class="btn-reset">
+                            <i class="bi bi-eraser"></i>
+                            Сбросить
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Панель инструментов -->
+        <div class="tools-panel">
+            <button class="btn-columns" type="button" data-bs-toggle="collapse" data-bs-target="#columnSelector">
+                <i class="bi bi-layout-three-columns"></i>
+                Настройка колонок
+                <span class="badge bg-primary ms-1">12 активных</span>
+            </button>
+            <div class="scroll-hint">
+                <i class="bi bi-arrow-left-right"></i>
+                Горизонтальная прокрутка · Используйте Shift + колесо мыши
+            </div>
+        </div>
+
+        <!-- Панель выбора колонок (свернута по умолчанию) -->
+        <div class="collapse" id="columnSelector">
+            <div class="columns-panel">
+                <div class="card-body">
+                    <div class="columns-grid">
+                        <!-- Активные колонки по умолчанию -->
+                        <div class="column-check">
+                            <input type="checkbox" value="type" id="colType" checked>
+                            <label for="colType">
+                                <i class="bi bi-tag"></i> Вид РИД
+                                <span class="active-badge ms-1">✓</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="name" id="colName" checked>
+                            <label for="colName">
+                                <i class="bi bi-card-text"></i> Наименование
+                                <span class="active-badge ms-1">✓</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="owners" id="colOwners" checked>
+                            <label for="colOwners">
+                                <i class="bi bi-people"></i> Правообладатели
+                                <span class="active-badge ms-1">✓</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="docNumber" id="colDocNumber" checked>
+                            <label for="colDocNumber">
+                                <i class="bi bi-upc-scan"></i> Номер документа
+                                <span class="active-badge ms-1">✓</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="abstract" id="colAbstract" checked>
+                            <label for="colAbstract">
+                                <i class="bi bi-file-text"></i> Реферат
+                                <span class="active-badge ms-1">✓</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="status" id="colStatus" checked>
+                            <label for="colStatus">
+                                <i class="bi bi-check-circle"></i> Статус
+                                <span class="active-badge ms-1">✓</span>
+                            </label>
+                        </div>
+
+                        <!-- Неактивные по умолчанию -->
+                        <div class="column-check">
+                            <input type="checkbox" value="year" id="colYear">
+                            <label for="colYear">
+                                <i class="bi bi-calendar"></i> Год создания
+                                <span class="inactive-badge ms-1">○</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="regDate" id="colRegDate">
+                            <label for="colRegDate">
+                                <i class="bi bi-calendar-check"></i> Дата регистрации
+                                <span class="inactive-badge ms-1">○</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="docType" id="colDocType">
+                            <label for="colDocType">
+                                <i class="bi bi-file-earmark"></i> Вид документа
+                                <span class="inactive-badge ms-1">○</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="docDate" id="colDocDate">
+                            <label for="colDocDate">
+                                <i class="bi bi-calendar-date"></i> Дата документа
+                                <span class="inactive-badge ms-1">○</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="appDate" id="colAppDate">
+                            <label for="colAppDate">
+                                <i class="bi bi-calendar-plus"></i> Дата заявки
+                                <span class="inactive-badge ms-1">○</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="authors" id="colAuthors">
+                            <label for="colAuthors">
+                                <i class="bi bi-pencil"></i> Авторы
+                                <span class="inactive-badge ms-1">○</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="statusDate" id="colStatusDate">
+                            <label for="colStatusDate">
+                                <i class="bi bi-clock-history"></i> Дата статуса
+                                <span class="inactive-badge ms-1">○</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="lang" id="colLang">
+                            <label for="colLang">
+                                <i class="bi bi-code-slash"></i> Языки
+                                <span class="inactive-badge ms-1">○</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="db" id="colDb">
+                            <label for="colDb">
+                                <i class="bi bi-database"></i> СУБД
+                                <span class="inactive-badge ms-1">○</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="claims" id="colClaims">
+                            <label for="colClaims">
+                                <i class="bi bi-file-earmark-ruled"></i> Формула
+                                <span class="inactive-badge ms-1">○</span>
+                            </label>
+                        </div>
+                        <div class="column-check">
+                            <input type="checkbox" value="expiry" id="colExpiry">
+                            <label for="colExpiry">
+                                <i class="bi bi-hourglass-split"></i> Срок действия
+                                <span class="inactive-badge ms-1">○</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="columns-note">
+                        <i class="bi bi-info-circle"></i>
+                        <span><strong>Активные по умолчанию:</strong> 6 основных колонок. Остальные можно включить по
+                            необходимости.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Таблица РИД -->
+        <div class="table-container">
+            <div class="table-responsive">
+                <table class="table" id="ipTable">
+                    <thead>
+                        <tr>
+                            <th data-column="type">Вид РИД</th>
+                            <th data-column="name">Наименование РИД</th>
+                            <th data-column="year" class="text-muted fw-normal">Год</th>
+                            <th data-column="regDate" class="text-muted fw-normal">Дата рег.</th>
+                            <th data-column="owners">Правообладатели</th>
+                            <th data-column="docType" class="text-muted fw-normal">Вид док.</th>
+                            <th data-column="docNumber">Номер док.</th>
+                            <th data-column="docDate" class="text-muted fw-normal">Дата док.</th>
+                            <th data-column="appDate" class="text-muted fw-normal">Дата заявки</th>
+                            <th data-column="authors" class="text-muted fw-normal">Авторы</th>
+                            <th data-column="abstract">Реферат</th>
+                            <th data-column="status">Статус</th>
+                            <th data-column="statusDate" class="text-muted fw-normal">Дата статуса</th>
+                            <th data-column="lang" class="text-muted fw-normal">Языки</th>
+                            <th data-column="db" class="text-muted fw-normal">СУБД</th>
+                            <th data-column="claims" class="text-muted fw-normal">Формула</th>
+                            <th data-column="expiry" class="text-muted fw-normal">Срок</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Строка 1: Изобретение "СИЛОКС-Т" (активный патент) -->
+                        <tr>
+                            <td data-column="type">
+                                <span class="badge-rid-type">Изобретение</span>
+                            </td>
+                            <td data-column="name">
+                                <span title="СПОСОБ И АППАРАТ ДЛЯ ОЧИСТКИ КРЕМНИЙОРГАНИЧЕСКИХ СОЕДИНЕНИЙ"
+                                    class="tooltip-icon">
+                                    Способ и аппарат для очистки кремнийорганических...
+                                </span>
+                            </td>
+                            <td data-column="year" class="text-center">
+                                <span class="badge-year">2018</span>
+                            </td>
+                            <td data-column="regDate" class="text-center small">18.04.2018</td>
+                            <td data-column="owners">
+                                <span class="owner-item">
+                                    <i class="bi bi-building"></i>
+                                    Минпромторг России
+                                </span>
+                                <span class="owner-count">+1</span>
+                            </td>
+                            <td data-column="docType" class="small text-muted">Патент</td>
+                            <td data-column="docNumber">
+                                <a href="#" class="link-fips" target="_blank">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                    2649845
+                                </a>
+                            </td>
+                            <td data-column="docDate" class="text-center small">18.04.2018</td>
+                            <td data-column="appDate" class="text-center small">30.03.2016</td>
+                            <td data-column="authors">
+                                <span class="owner-item">
+                                    <i class="bi bi-pencil-square"></i>
+                                    Иванов И.И.
+                                </span>
+                                <span class="owner-count">+3</span>
+                            </td>
+                            <td data-column="abstract" class="text-center">
+                                <i class="bi bi-file-text icon-popover" data-bs-toggle="popover" title="Реферат"
+                                    data-bs-content="Изобретение относится к способам очистки кремнийорганических соединений..."></i>
+                            </td>
+                            <td data-column="status" class="text-center">
+                                <span class="status-badge status-active">Действует</span>
+                            </td>
+                            <td data-column="statusDate" class="text-center small">01.03.2026</td>
+                            <td data-column="lang" class="text-center">—</td>
+                            <td data-column="db" class="text-center">—</td>
+                            <td data-column="claims" class="text-center">
+                                <i class="bi bi-file-earmark-text icon-popover" data-bs-toggle="popover" title="Формула"
+                                    data-bs-content="1. Способ очистки кремнийорганических соединений от летучих компонентов..."></i>
+                            </td>
+                            <td data-column="expiry" class="text-center">
+                                <span class="text-valid">30.03.2039</span>
+                            </td>
+                        </tr>
+
+                        <!-- Строка 2: Полезная модель -->
+                        <tr>
+                            <td data-column="type">
+                                <span class="badge-rid-type">Полезная модель</span>
+                            </td>
+                            <td data-column="name">
+                                <span title="Устройство для фильтрации технологических жидкостей" class="tooltip-icon">
+                                    Устройство для фильтрации технологических...
+                                </span>
+                            </td>
+                            <td data-column="year" class="text-center">
+                                <span class="badge-year">2022</span>
+                            </td>
+                            <td data-column="regDate" class="text-center small">15.09.2022</td>
+                            <td data-column="owners">
+                                <span class="owner-item">
+                                    <i class="bi bi-person"></i>
+                                    Петров П.П.
+                                </span>
+                                <span class="owner-item">
+                                    <i class="bi bi-building"></i>
+                                    ООО "Технопром"
+                                </span>
+                            </td>
+                            <td data-column="docType" class="small text-muted">Патент</td>
+                            <td data-column="docNumber">
+                                <a href="#" class="link-fips" target="_blank">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                    215478
+                                </a>
+                            </td>
+                            <td data-column="docDate" class="text-center small">15.09.2022</td>
+                            <td data-column="appDate" class="text-center small">10.03.2022</td>
+                            <td data-column="authors">
+                                <span class="owner-item">
+                                    <i class="bi bi-pencil-square"></i>
+                                    Петров П.П.
+                                </span>
+                            </td>
+                            <td data-column="abstract" class="text-center">
+                                <i class="bi bi-file-text icon-popover" data-bs-toggle="popover" title="Реферат"
+                                    data-bs-content="Полезная модель относится к устройствам для фильтрации..."></i>
+                            </td>
+                            <td data-column="status" class="text-center">
+                                <span class="status-badge status-active">Действует</span>
+                            </td>
+                            <td data-column="statusDate" class="text-center small">01.03.2026</td>
+                            <td data-column="lang" class="text-center">—</td>
+                            <td data-column="db" class="text-center">—</td>
+                            <td data-column="claims" class="text-center">
+                                <i class="bi bi-file-earmark-text icon-popover" data-bs-toggle="popover" title="Формула"
+                                    data-bs-content="1. Устройство для фильтрации..."></i>
+                            </td>
+                            <td data-column="expiry" class="text-center">
+                                <span class="text-valid">15.09.2032</span>
+                            </td>
+                        </tr>
+
+                        <!-- Строка 3: Программа для ЭВМ -->
+                        <tr>
+                            <td data-column="type">
+                                <span class="badge-rid-type">Программа для ЭВМ</span>
+                            </td>
+                            <td data-column="name">
+                                <span title="Программа для моделирования гидродинамических процессов"
+                                    class="tooltip-icon">
+                                    Программа для моделирования гидродинамических...
+                                </span>
+                            </td>
+                            <td data-column="year" class="text-center">
+                                <span class="badge-year">2023</span>
+                            </td>
+                            <td data-column="regDate" class="text-center small">10.11.2023</td>
+                            <td data-column="owners">
+                                <span class="owner-item">
+                                    <i class="bi bi-building"></i>
+                                    АО "НИИ Механики"
+                                </span>
+                            </td>
+                            <td data-column="docType" class="small text-muted">Свидет-во</td>
+                            <td data-column="docNumber">
+                                <a href="#" class="link-fips" target="_blank">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                    2023661234
+                                </a>
+                            </td>
+                            <td data-column="docDate" class="text-center small">10.11.2023</td>
+                            <td data-column="appDate" class="text-center small">05.08.2023</td>
+                            <td data-column="authors">
+                                <span class="owner-item">
+                                    <i class="bi bi-pencil-square"></i>
+                                    Сидоров С.С.
+                                </span>
+                                <span class="owner-item">
+                                    <i class="bi bi-pencil-square"></i>
+                                    Козлов К.К.
+                                </span>
+                            </td>
+                            <td data-column="abstract" class="text-center">
+                                <i class="bi bi-file-text icon-popover" data-bs-toggle="popover" title="Реферат"
+                                    data-bs-content="Программа предназначена для моделирования гидродинамических процессов..."></i>
+                            </td>
+                            <td data-column="status" class="text-center">
+                                <span class="status-badge status-active">Действует</span>
+                            </td>
+                            <td data-column="statusDate" class="text-center small">01.03.2026</td>
+                            <td data-column="lang" class="text-center">
+                                <i class="bi bi-code-square icon-popover" data-bs-toggle="popover"
+                                    title="Языки программирования" data-bs-content="Python, C++, Fortran"></i>
+                            </td>
+                            <td data-column="db" class="text-center">—</td>
+                            <td data-column="claims" class="text-center">—</td>
+                            <td data-column="expiry" class="text-center">
+                                <span class="text-valid">Бессрочно</span>
+                            </td>
+                        </tr>
+
+                        <!-- Строка 4: База данных -->
+                        <tr>
+                            <td data-column="type">
+                                <span class="badge-rid-type">База данных</span>
+                            </td>
+                            <td data-column="name">
+                                <span title="База данных 'Патентный фонд РФ' для аналитики" class="tooltip-icon">
+                                    База данных "Патентный фонд РФ" для аналитики
+                                </span>
+                            </td>
+                            <td data-column="year" class="text-center">
+                                <span class="badge-year">2024</span>
+                            </td>
+                            <td data-column="regDate" class="text-center small">20.01.2024</td>
+                            <td data-column="owners">
+                                <span class="owner-item">
+                                    <i class="bi bi-building"></i>
+                                    ФИПС Роспатент
+                                </span>
+                            </td>
+                            <td data-column="docType" class="small text-muted">Свидет-во</td>
+                            <td data-column="docNumber">
+                                <a href="#" class="link-fips" target="_blank">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                    2024620012
+                                </a>
+                            </td>
+                            <td data-column="docDate" class="text-center small">20.01.2024</td>
+                            <td data-column="appDate" class="text-center small">15.11.2023</td>
+                            <td data-column="authors">
+                                <span class="owner-item">
+                                    <i class="bi bi-pencil-square"></i>
+                                    Смирнова А.А.
+                                </span>
+                            </td>
+                            <td data-column="abstract" class="text-center">
+                                <i class="bi bi-file-text icon-popover" data-bs-toggle="popover" title="Реферат"
+                                    data-bs-content="База данных содержит структурированную информацию о патентах РФ..."></i>
+                            </td>
+                            <td data-column="status" class="text-center">
+                                <span class="status-badge status-active">Действует</span>
+                            </td>
+                            <td data-column="statusDate" class="text-center small">01.03.2026</td>
+                            <td data-column="lang" class="text-center">—</td>
+                            <td data-column="db" class="text-center">
+                                <i class="bi bi-database icon-popover" data-bs-toggle="popover" title="СУБД"
+                                    data-bs-content="PostgreSQL, MongoDB"></i>
+                            </td>
+                            <td data-column="claims" class="text-center">—</td>
+                            <td data-column="expiry" class="text-center">
+                                <span class="text-valid">Бессрочно</span>
+                            </td>
+                        </tr>
+
+                        <!-- Строка 5: Истекший патент -->
+                        <tr>
+                            <td data-column="type">
+                                <span class="badge-rid-type">Изобретение</span>
+                            </td>
+                            <td data-column="name">
+                                <span title="Способ получения высокочистого кремния" class="tooltip-icon">
+                                    Способ получения высокочистого кремния
+                                </span>
+                            </td>
+                            <td data-column="year" class="text-center">
+                                <span class="badge-year">2010</span>
+                            </td>
+                            <td data-column="regDate" class="text-center small">12.05.2010</td>
+                            <td data-column="owners">
+                                <span class="owner-item">
+                                    <i class="bi bi-building"></i>
+                                    ОАО "Кремний"
+                                </span>
+                            </td>
+                            <td data-column="docType" class="small text-muted">Патент</td>
+                            <td data-column="docNumber">
+                                <span>2417965</span>
+                            </td>
+                            <td data-column="docDate" class="text-center small">12.05.2010</td>
+                            <td data-column="appDate" class="text-center small">15.01.2008</td>
+                            <td data-column="authors">
+                                <span class="owner-item">
+                                    <i class="bi bi-pencil-square"></i>
+                                    Николаев Н.Н.
+                                </span>
+                            </td>
+                            <td data-column="abstract" class="text-center">—</td>
+                            <td data-column="status" class="text-center">
+                                <span class="status-badge status-inactive">Не действует</span>
+                            </td>
+                            <td data-column="statusDate" class="text-center small">12.05.2020</td>
+                            <td data-column="lang" class="text-center">—</td>
+                            <td data-column="db" class="text-center">—</td>
+                            <td data-column="claims" class="text-center">—</td>
+                            <td data-column="expiry" class="text-center">
+                                <span class="text-expired">12.05.2020</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Пагинация -->
+        <div class="pagination-container">
+            <ul class="pagination">
+                <li class="page-item disabled">
+                    <a class="page-link" href="#" aria-label="Первая">
+                        <i class="bi bi-chevron-double-left"></i>
+                    </a>
+                </li>
+                <li class="page-item disabled">
+                    <a class="page-link" href="#" aria-label="Предыдущая">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
+                </li>
+                <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                <li class="page-item"><a class="page-link" href="#">2</a></li>
+                <li class="page-item"><a class="page-link" href="#">3</a></li>
+                <li class="page-item"><a class="page-link" href="#">4</a></li>
+                <li class="page-item"><a class="page-link" href="#">5</a></li>
+                <li class="page-item"><a class="page-link" href="#">...</a></li>
+                <li class="page-item"><a class="page-link" href="#">26</a></li>
+                <li class="page-item">
+                    <a class="page-link" href="#" aria-label="Следующая">
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="#" aria-label="Последняя">
+                        <i class="bi bi-chevron-double-right"></i>
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </main>
+
+    <!-- Bootstrap JS и Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // Инициализация popovers
+        document.addEventListener('DOMContentLoaded', function () {
+            // Popovers
+            var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+            var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+                return new bootstrap.Popover(popoverTriggerEl, {
+                    trigger: 'hover focus',
+                    placement: 'auto',
+                    html: false,
+                    container: 'body'
+                });
+            });
+
+            // Управление видимостью колонок
+            const checkboxes = document.querySelectorAll('#columnSelector input[type="checkbox"]');
+
+            // Функция переключения колонок
+            function toggleColumn(columnName, show) {
+                const selector = `th[data-column="${columnName}"], td[data-column="${columnName}"]`;
+                document.querySelectorAll(selector).forEach(el => {
+                    if (show) {
+                        el.classList.remove('d-none');
+                        // Восстанавливаем стили для заголовков
+                        if (el.tagName === 'TH') {
+                            el.classList.remove('text-muted', 'fw-normal');
+                        }
+                    } else {
+                        el.classList.add('d-none');
+                    }
+                });
+            }
+
+            // Начальная настройка: активные колонки видны, неактивные - скрыты
+            checkboxes.forEach(checkbox => {
+                const columnName = checkbox.value;
+                if (!checkbox.checked) {
+                    toggleColumn(columnName, false);
+
+                    // Для заголовков неактивных колонок добавляем классы
+                    const th = document.querySelector(`th[data-column="${columnName}"]`);
+                    if (th) {
+                        th.classList.add('text-muted', 'fw-normal');
+                    }
+                }
+            });
+
+            // Обработчик изменений
+            checkboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', function () {
+                    const columnName = this.value;
+                    const isChecked = this.checked;
+
+                    toggleColumn(columnName, isChecked);
+
+                    // Обновляем стиль заголовка
+                    const th = document.querySelector(`th[data-column="${columnName}"]`);
+                    if (th) {
+                        if (isChecked) {
+                            th.classList.remove('text-muted', 'fw-normal');
+                        } else {
+                            th.classList.add('text-muted', 'fw-normal');
+                        }
+                    }
+                });
+            });
+
+            // Ctrl+F - фокус на поиск
+            document.addEventListener('keydown', function (e) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                    e.preventDefault();
+                    const searchInput = document.querySelector('input[placeholder*="Поиск по названию"]');
+                    if (searchInput) {
+                        searchInput.focus();
+                        searchInput.select();
+                    }
+                }
+
+                // Escape - сброс фильтров
+                if (e.key === 'Escape') {
+                    const resetBtn = document.querySelector('button[type="reset"]');
+                    if (resetBtn && document.activeElement?.tagName !== 'INPUT') {
+                        resetBtn.click();
+                    }
+                }
+            });
+
+            // Кнопка сброса
+            document.querySelector('button[type="reset"]')?.addEventListener('click', function () {
+                const inputs = document.querySelectorAll('#filter-form input, #filter-form select');
+                inputs.forEach(input => {
+                    if (input.tagName === 'SELECT') {
+                        input.selectedIndex = 0;
+                    } else {
+                        input.value = '';
+                    }
+                });
+            });
+
+            // Обработка формы
+            document.getElementById('filter-form')?.addEventListener('submit', function (e) {
+                e.preventDefault();
+                // Здесь будет AJAX запрос в будущем
+                alert('Применены фильтры (демо-режим)');
+            });
+        });
+    </script>
+</body>
+
+</html>
