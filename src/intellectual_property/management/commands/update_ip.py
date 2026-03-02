@@ -99,8 +99,8 @@ class Command(BaseCommand):
         parser.add_argument(
             '--timeout',
             type=int,
-            default=30,
-            help='Таймаут запроса в секундах (по умолчанию 30)'
+            default=10,
+            help='Таймаут запроса в секундах (по умолчанию 10)'
         )
         
         parser.add_argument(
@@ -529,7 +529,7 @@ class Command(BaseCommand):
         
         # Каждые 30-70 запросов делаем длинную паузу (как будто пользователь отошел)
         if self.request_count % random.randint(30, 70) == 0:
-            long_delay = random.uniform(45, 180)  # 45 секунд - 3 минуты
+            long_delay = random.uniform(10, 40)
             if self.verbosity >= 1:
                 self.stdout.write(f"\n   💤 ДЛИННАЯ ПАУЗА {long_delay:.1f} сек... (после {self.request_count} запросов)")
             time.sleep(long_delay)
@@ -537,7 +537,7 @@ class Command(BaseCommand):
         
         # Каждые 10-20 запросов делаем среднюю паузу (изучение страницы)
         if self.request_count % random.randint(10, 20) == 0:
-            medium_delay = random.uniform(8, 25)  # 8-25 секунд
+            medium_delay = random.uniform(5, 20)
             if self.verbosity >= 2:
                 self.stdout.write(f"\n   ⏱️ ПАУЗА {medium_delay:.1f} сек (изучение)...")
             time.sleep(medium_delay)
