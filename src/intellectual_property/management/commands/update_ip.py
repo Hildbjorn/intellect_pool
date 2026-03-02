@@ -1040,15 +1040,15 @@ class Command(BaseCommand):
             if status_label and 'Статус:' in status_label.get_text():
                 status_value = row.find('td', id='StatusR')
                 if status_value:
-                    status_text = status_value.get_text(strip=True).lower()
+                    status_text = status_value.get_text(strip=True)
                     
-                    # Проверяем наличие слова "действует" в любом контексте
-                    if re.search(r'действует', status_text):
-                        return True
-                    else:
-                        return False
+                    # Берем ПЕРВОЕ слово статуса
+                    first_word = status_text.split()[0].lower() if status_text.split() else ''
+                    
+                    # Если первое слово "действует" - True, иначе False
+                    return first_word == 'действует'
         
-        return None
+        return False  # По умолчанию считаем недействующим
 
     def parse_programming_languages(self, soup, type_slug):
         """Парсинг языков программирования для программ ЭВМ"""
