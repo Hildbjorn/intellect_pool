@@ -1,8 +1,8 @@
 """
-Команда для обновления данных РИД путем парсинга Google Patents.
+Команда для обновления данных РИД путем прямого парсинга Google Patents.
 Поддерживает все типы РИД с соответствующими полями для каждого типа.
 
-Использует библиотеку google-patent-scraper для получения HTML страниц и BeautifulSoup для парсинга.
+Использует requests для получения HTML страниц и BeautifulSoup для парсинга.
 
 Логика работы:
 - --force: начинает с начала (обрабатывает все записи подряд)
@@ -11,7 +11,7 @@
 Мимикрия под реального пользователя:
 - Ротация User-Agent
 - Умные задержки между запросами
-- Обработка rate limiting от Google
+- Обработка rate limiting
 """
 
 import logging
@@ -22,6 +22,7 @@ import sys
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
 
+import requests
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.db.models import Q
@@ -29,15 +30,6 @@ from tqdm import tqdm
 from bs4 import BeautifulSoup
 
 from intellectual_property.models import IPObject, IPType, ProgrammingLanguage, DBMS
-
-# Импорт библиотеки google-patent-scraper
-try:
-    from google_patent_scraper import scraper_class
-except ImportError:
-    raise CommandError(
-        "Библиотека google-patent-scraper не установлена. "
-        "Установите: pip install google-patent-scraper"
-    )
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +40,7 @@ class RateLimitException(Exception):
 
 
 class Command(BaseCommand):
-    help = 'Обновление данных РИД парсингом Google Patents'
+    help = 'Обновление данных РИД прямым парсингом Google Patents'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -162,7 +154,7 @@ class Command(BaseCommand):
             'database': 'database',
         }
 
-        # Карта полей для каждого типа РИД (с description)
+        # Карта полей для каждого типа РИД
         self.type_fields_map = {
             'invention': {
                 'abstract': {'target': 'abstract', 'is_main': True},
@@ -207,7 +199,7 @@ class Command(BaseCommand):
             'by_type': {},
         }
 
-        self.scraper = None
+        self.session = None
         self.request_count = 0
         self.start_id = None
 
@@ -218,6 +210,15 @@ class Command(BaseCommand):
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        ]
+
+        # Варианты Accept-Language
+        self.accept_languages = [
+            'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+            'ru,en-US;q=0.9,en;q=0.8,uk;q=0.7',
+            'ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4',
+            'en-US,en;q=0.9,ru;q=0.8',
         ]
 
     def handle(self, *args, **options):
@@ -245,7 +246,7 @@ class Command(BaseCommand):
         ip_type_param = options['ip_type']
 
         self.print_header(order_text)
-        self.init_scraper()
+        self.init_session()
 
         type_slugs_to_process = self.get_type_slugs(ip_type_param)
 
@@ -300,29 +301,28 @@ class Command(BaseCommand):
             self.stdout.write(f"📋 Обработка типа РИД: {ip_type_param}")
             return type_slugs
 
-    def init_scraper(self):
-        """Инициализация scraper_class с настройками"""
-        try:
-            # Создаем экземпляр скрапера
-            self.scraper = scraper_class()
-            
-            # Если нужно получать рефераты
-            if hasattr(self.scraper, 'return_abstract'):
-                self.scraper.return_abstract = True
-                
-            self.stdout.write(self.style.SUCCESS("✅ Инициализирован google-patent-scraper"))
-            
-        except Exception as e:
-            raise CommandError(f"Ошибка инициализации скрапера: {e}")
+    def init_session(self):
+        """Инициализация HTTP-сессии"""
+        self.session = requests.Session()
+        
+        # Базовые заголовки
+        self.session.headers.update({
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Language': random.choice(self.accept_languages),
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        })
 
-    def rotate_user_agent(self):
-        """Ротация User-Agent для мимикрии"""
-        if not self.human_mode or not hasattr(self.scraper, 'session'):
+    def rotate_headers(self):
+        """Ротация заголовков для каждого запроса"""
+        if not self.human_mode:
             return
 
-        user_agent = random.choice(self.user_agents)
-        if hasattr(self.scraper.session, 'headers'):
-            self.scraper.session.headers.update({'User-Agent': user_agent})
+        self.session.headers.update({
+            'User-Agent': random.choice(self.user_agents),
+            'Accept-Language': random.choice(self.accept_languages),
+        })
 
     def apply_delay(self):
         """Умная задержка между запросами"""
@@ -349,25 +349,12 @@ class Command(BaseCommand):
             return
 
         base_delay = self.delay * random.uniform(0.7, 2.5)
-        extra_delay = 0
-
-        if random.random() < 0.3:
-            extra_delay = random.uniform(1, 5)
-            if self.verbosity >= 3:
-                self.stdout.write(f"      🤔 Читает... +{extra_delay:.1f} сек")
-
-        if random.random() < 0.1:
-            if self.verbosity >= 2:
-                self.stdout.write("      🤔 Пауза-раздумье...")
-            time.sleep(random.uniform(2, 6))
-
-        time.sleep(base_delay + extra_delay)
+        time.sleep(base_delay)
 
     def get_queryset(self, type_slugs):
         """Получение queryset для обработки"""
         ip_types = IPType.objects.filter(slug__in=type_slugs)
 
-        # Используем registration_number вместо publication_url
         queryset = IPObject.objects.filter(
             ip_type__in=ip_types,
             registration_number__isnull=False
@@ -450,17 +437,18 @@ class Command(BaseCommand):
         self.print_final_stats()
 
     def format_patent_number(self, registration_number):
-        """Форматирование номера патента для Google Patents"""
+        """
+        Форматирование номера патента для Google Patents.
+        Всегда добавляет префикс RU, если его нет.
+        """
         # Очищаем номер от лишних символов
         clean_number = re.sub(r'[^\w]', '', registration_number)
         
-        # Патенты РФ обычно имеют формат RU + номер + код
-        if re.match(r'^\d+$', clean_number):
-            return f"RU{clean_number}"
-        elif clean_number.upper().startswith('RU'):
-            return clean_number.upper()
-        else:
-            return clean_number
+        # Убираем возможный префикс RU для унификации
+        clean_number = re.sub(r'^RU', '', clean_number, flags=re.IGNORECASE)
+        
+        # Всегда добавляем RU
+        return f"RU{clean_number}"
 
     def process_in_batches(self, queryset):
         """Обработка записей по батчам"""
@@ -489,7 +477,7 @@ class Command(BaseCommand):
                     
                     if self.verbosity >= 1:
                         self.stdout.write(self.style.WARNING(
-                            "\n   ⏳ Слишком быстрый просмотр. Пауза 60 сек..."
+                            "\n   ⏳ Rate limit. Пауза 60 сек..."
                         ))
                     time.sleep(60)
                 except Exception as e:
@@ -523,34 +511,30 @@ class Command(BaseCommand):
 
         if not ip_object.registration_number:
             self.stats['skipped'] += 1
-            if self.verbosity >= 2:
-                self.stdout.write(self.style.WARNING("   ⚠️ Нет registration_number, пропуск"))
             return
 
-        # Форматируем номер патента для Google Patents
+        # Форматируем номер патента (всегда с RU)
         patent_number = self.format_patent_number(ip_object.registration_number)
+        url = f"https://patents.google.com/patent/{patent_number}"
+        
+        if self.verbosity >= 2:
+            self.stdout.write(f"   🔗 URL: {url}")
 
         fields_map = self.type_fields_map.get(type_slug, {})
 
         if not fields_map:
             self.stats['skipped'] += 1
-            if self.verbosity >= 2:
-                self.stdout.write(self.style.WARNING(f"   ⚠️ Нет карты полей для типа {type_slug}"))
             return
 
         # Проверка на необходимость обновления
         if not self.force:
             needs_update = False
-            
-            # Проверяем все поля для данного типа
             for target_field in fields_map.keys():
                 if target_field in ['programming_languages', 'dbms']:
-                    # Для m2m полей проверяем, есть ли значения
                     if not getattr(ip_object, target_field).exists():
                         needs_update = True
                         break
                 else:
-                    # Для текстовых полей
                     current_value = getattr(ip_object, target_field)
                     if not current_value or not current_value.strip():
                         needs_update = True
@@ -562,90 +546,66 @@ class Command(BaseCommand):
                 self.stats['skipped'] += 1
                 return
 
-        # Ротируем User-Agent
-        self.rotate_user_agent()
+        # Ротируем заголовки
+        self.rotate_headers()
         self.request_count += 1
 
         try:
-            # Получаем результат от скрапера
-            if self.verbosity >= 2:
-                self.stdout.write(f"   🔗 Запрос к Google Patents: {patent_number}")
+            # Прямой запрос к странице
+            html_content = self.fetch_patent_page(url)
             
-            result = self.scraper.request_single_patent(patent_number)
+            if not html_content:
+                self.stats['failed'] += 1
+                self.stats['by_type'][type_slug]['failed'] += 1
+                return
 
-            if self.verbosity >= 3:
-                self.stdout.write(f"   📦 ТИП ОТВЕТА: {type(result)}")
-                if isinstance(result, tuple):
-                    self.stdout.write(f"   📦 ДЛИНА КОРТЕЖА: {len(result)}")
-                    for i, item in enumerate(result):
-                        self.stdout.write(f"   📦 Элемент[{i}]: тип={type(item)}")
-
-            # Обрабатываем кортеж из 3 элементов
-            if isinstance(result, tuple) and len(result) == 3:
-                html_content, soup, errors = result
+            # Проверяем, не вернулась ли страница с ошибкой
+            if len(html_content) < 1000 and "Документ с данным номером отсутствует" in html_content:
+                self.stats['special_messages'] += 1
+                self.stats['by_type'][type_slug]['special'] += 1
                 
-                if self.verbosity >= 3:
-                    self.stdout.write(f"   📄 HTML длина: {len(html_content) if html_content else 0}")
-                    self.stdout.write(f"   🍜 Soup тип: {type(soup)}")
-                    self.stdout.write(f"   ❌ Ошибки: {errors}")
-                
-                if errors and "Документ с данным номером отсутствует" in str(errors):
-                    self.stats['special_messages'] += 1
-                    self.stats['by_type'][type_slug]['special'] += 1
-                    
-                    parsed_data = {
-                        'abstract': {
-                            'value': f"[ОТВЕТ СЕРВЕРА] Документ с данным номером отсутствует",
-                            'is_m2m': False
-                        }
+                parsed_data = {
+                    'abstract': {
+                        'value': f"[ОТВЕТ СЕРВЕРА] Документ с данным номером отсутствует",
+                        'is_m2m': False
                     }
-                    
-                    updated = self.update_object(ip_object, parsed_data, fields_map)
-                    
-                    if updated:
-                        self.stats['success'] += 1
-                        self.stats['by_type'][type_slug]['success'] += 1
-                        if self.verbosity >= 2:
-                            self.stdout.write(self.style.SUCCESS(f"   ✅ Записано сообщение об отсутствии"))
-                    else:
-                        self.stats['skipped'] += 1
-                    
-                    return
+                }
                 
-                # Парсим данные из soup
-                if soup and isinstance(soup, BeautifulSoup):
-                    parsed_data = self.parse_all_fields(soup, fields_map)
-                    
-                    if parsed_data:
-                        updated = self.update_object(ip_object, parsed_data, fields_map)
-                        
-                        if updated:
-                            self.stats['success'] += 1
-                            self.stats['by_type'][type_slug]['success'] += 1
-                            
-                            if self.verbosity >= 2:
-                                fields_updated = ', '.join(parsed_data.keys())
-                                self.stdout.write(self.style.SUCCESS(f"   ✅ Данные обновлены: {fields_updated}"))
-                        else:
-                            self.stats['skipped'] += 1
-                            if self.verbosity >= 2:
-                                self.stdout.write("   ℹ️ Нет изменений")
-                    else:
-                        self.stats['failed'] += 1
-                        self.stats['by_type'][type_slug]['failed'] += 1
-                        if self.verbosity >= 2:
-                            self.stdout.write(self.style.WARNING("   ⚠️ Не удалось извлечь данные"))
+                updated = self.update_object(ip_object, parsed_data, fields_map)
+                
+                if updated:
+                    self.stats['success'] += 1
+                    self.stats['by_type'][type_slug]['success'] += 1
                 else:
-                    self.stats['failed'] += 1
-                    self.stats['by_type'][type_slug]['failed'] += 1
-                    if self.verbosity >= 2:
-                        self.stdout.write(self.style.ERROR("   ❌ soup отсутствует или неверного типа"))
+                    self.stats['skipped'] += 1
+                
+                return
 
+            # Парсим HTML
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Извлекаем данные
+            parsed_data = self.parse_all_fields(soup, fields_map)
+            
+            if parsed_data:
+                updated = self.update_object(ip_object, parsed_data, fields_map)
+                
+                if updated:
+                    self.stats['success'] += 1
+                    self.stats['by_type'][type_slug]['success'] += 1
+                    
+                    if self.verbosity >= 2:
+                        fields_updated = ', '.join(parsed_data.keys())
+                        self.stdout.write(self.style.SUCCESS(f"   ✅ Данные обновлены: {fields_updated}"))
+                else:
+                    self.stats['skipped'] += 1
+                    if self.verbosity >= 2:
+                        self.stdout.write("   ℹ️ Нет изменений")
             else:
                 self.stats['failed'] += 1
                 self.stats['by_type'][type_slug]['failed'] += 1
                 if self.verbosity >= 2:
-                    self.stdout.write(self.style.ERROR(f"   ❌ Неожиданный формат ответа: {type(result)}"))
+                    self.stdout.write(self.style.WARNING("   ⚠️ Не удалось извлечь данные"))
 
         except Exception as e:
             self.stats['errors'] += 1
@@ -653,18 +613,44 @@ class Command(BaseCommand):
             self.stats['by_type'][type_slug]['failed'] += 1
 
             if self.verbosity >= 1:
-                self.stdout.write(self.style.ERROR(f"   ❌ Ошибка получения данных: {e}"))
+                self.stdout.write(self.style.ERROR(f"   ❌ Ошибка: {e}"))
             logger.error(f"Error processing IPObject {ip_object.id}: {e}", exc_info=True)
+
+    def fetch_patent_page(self, url):
+        """Прямой запрос к Google Patents"""
+        try:
+            if self.verbosity >= 2:
+                self.stdout.write(f"   📡 Запрос к {url}")
+            
+            response = self.session.get(url, timeout=self.timeout)
+            
+            if response.status_code == 429:
+                raise RateLimitException()
+            
+            response.raise_for_status()
+            response.encoding = 'utf-8'
+            
+            if self.verbosity >= 3:
+                self.stdout.write(f"   📄 Получено {len(response.text)} символов")
+            
+            return response.text
+            
+        except RateLimitException:
+            raise
+        except Exception as e:
+            if self.verbosity >= 2:
+                self.stdout.write(self.style.ERROR(f"   ❌ Ошибка запроса: {e}"))
+            return None
 
     def parse_all_fields(self, soup, fields_map):
         """Парсинг всех полей из BeautifulSoup объекта"""
         result = {}
         
-        if self.verbosity >= 1:  # Повысим уровень для отладки
+        if self.verbosity >= 3:
             self.stdout.write(f"      🔍 parse_all_fields: fields_map keys = {list(fields_map.keys())}")
         
         for target_field in fields_map.keys():
-            if self.verbosity >= 1:
+            if self.verbosity >= 3:
                 self.stdout.write(f"      🔍 Обработка поля: {target_field}")
             
             if target_field == 'abstract':
@@ -685,207 +671,143 @@ class Command(BaseCommand):
                     'value': value,
                     'is_m2m': target_field in ['programming_languages', 'dbms']
                 }
-                if self.verbosity >= 1:
+                if self.verbosity >= 2:
                     preview = str(value)[:100] + '...' if len(str(value)) > 100 else str(value)
                     self.stdout.write(f"      ✅ Найдено {target_field}: {preview}")
             else:
-                if self.verbosity >= 1:
+                if self.verbosity >= 2:
                     self.stdout.write(f"      ❌ {target_field} не найден")
-        
-        if not result and self.verbosity >= 1:
-            self.stdout.write(f"      ❌ parse_all_fields: ничего не найдено")
         
         return result if result else None
 
     def parse_abstract(self, soup):
-        """Извлечение реферата из секции abstract"""
+        """Извлечение реферата"""
         if not soup:
-            if self.verbosity >= 2:
-                self.stdout.write("      ❌ parse_abstract: soup is None")
             return None
         
-        if self.verbosity >= 2:
-            self.stdout.write("      🔍 parse_abstract: начинаем поиск")
-        
-        # СПОСОБ 1: Ищем по заголовку h3 с текстом "Abstract"
-        abstract_header = soup.find('h3', string=re.compile(r'Abstract', re.I))
-        if abstract_header:
-            if self.verbosity >= 2:
-                self.stdout.write("      ✅ parse_abstract: найден заголовок 'Abstract'")
+        # СПОСОБ 1: Ищем abstract с lang="RU"
+        abstract_elem = soup.find('abstract', {'lang': 'RU'})
+        if abstract_elem:
+            texts = []
+            for div in abstract_elem.find_all('div'):
+                text = div.get_text(strip=True)
+                if text and self.contains_cyrillic(text):
+                    texts.append(text)
             
-            # Ищем родительскую секцию
-            parent_section = abstract_header.find_parent('section')
-            if parent_section:
-                # Ищем patent-text
-                patent_text = parent_section.find('patent-text')
-                if patent_text:
-                    # Ищем abstract с lang="RU"
-                    abstract_elem = patent_text.find('abstract', {'lang': 'RU'})
-                    if abstract_elem:
-                        texts = []
-                        for div in abstract_elem.find_all('div', class_=re.compile(r'abstract|description-paragraph', re.I)):
-                            text = div.get_text(strip=True)
-                            if text and self.contains_cyrillic(text):
-                                texts.append(text)
-                        
-                        if texts:
-                            full_text = '\n\n'.join(texts)
-                            if self.verbosity >= 2:
-                                self.stdout.write(f"      ✅ Нашли abstract через заголовок, длина: {len(full_text)}")
-                            return self.clean_text(full_text)
+            if texts:
+                full_text = '\n\n'.join(texts)
+                # Убираем слово "Abstract" в начале, если оно есть
+                full_text = self.remove_header(full_text, 'Abstract')
+                return self.clean_text(full_text)
         
-        # СПОСОБ 2: Ищем секцию, содержащую patent-text с abstract
-        for section in soup.find_all('section'):
-            patent_text = section.find('patent-text')
-            if patent_text:
-                abstract_elem = patent_text.find('abstract', {'lang': 'RU'})
-                if abstract_elem:
-                    if self.verbosity >= 2:
-                        self.stdout.write("      ✅ parse_abstract: найден через поиск по секциям")
-                    texts = []
-                    for div in abstract_elem.find_all('div', class_=re.compile(r'abstract|description-paragraph', re.I)):
-                        text = div.get_text(strip=True)
-                        if text and self.contains_cyrillic(text):
-                            texts.append(text)
-                    
-                    if texts:
-                        full_text = '\n\n'.join(texts)
-                        return self.clean_text(full_text)
+        # СПОСОБ 2: Ищем в секции с заголовком
+        abstract_header = soup.find(['h2', 'h3'], string=re.compile(r'Abstract', re.I))
+        if abstract_header:
+            parent = abstract_header.find_parent()
+            if parent:
+                text = parent.get_text(strip=True)
+                if text and self.contains_cyrillic(text):
+                    # Убираем заголовок
+                    header_text = abstract_header.get_text(strip=True)
+                    if text.startswith(header_text):
+                        text = text[len(header_text):].strip()
+                    return self.clean_text(text)
         
-        if self.verbosity >= 2:
-            self.stdout.write("      ❌ parse_abstract: ничего не найдено")
         return None
 
     def parse_description(self, soup):
-        """Извлечение описания из секции description"""
+        """Извлечение описания"""
         if not soup:
-            if self.verbosity >= 2:
-                self.stdout.write("      ❌ parse_description: soup is None")
             return None
         
-        if self.verbosity >= 2:
-            self.stdout.write("      🔍 parse_description: начинаем поиск")
-        
-        # СПОСОБ 1: Ищем по заголовку h3 с текстом "Description"
-        desc_header = soup.find('h3', string=re.compile(r'Description', re.I))
-        if desc_header:
-            if self.verbosity >= 2:
-                self.stdout.write("      ✅ parse_description: найден заголовок 'Description'")
+        # СПОСОБ 1: Ищем description с lang="RU"
+        desc_elem = soup.find('description', {'lang': 'RU'})
+        if desc_elem:
+            texts = []
+            for p in desc_elem.find_all('div', class_='description-paragraph'):
+                text = p.get_text(strip=True)
+                if text and self.contains_cyrillic(text):
+                    # Убираем номер параграфа
+                    text = re.sub(r'^\s*\d+\s+', '', text)
+                    texts.append(text)
             
-            parent_section = desc_header.find_parent('section')
-            if parent_section:
-                patent_text = parent_section.find('patent-text', id='descriptionText')
-                if not patent_text:
-                    patent_text = parent_section.find('patent-text')
-                
-                if patent_text:
-                    desc_div = patent_text.find('div', class_='description')
-                    if desc_div:
-                        texts = []
-                        for p in desc_div.find_all('div', class_='description-paragraph'):
-                            text = p.get_text(strip=True)
-                            if text and self.contains_cyrillic(text):
-                                text = re.sub(r'^\s*\d+\s+', '', text)
-                                texts.append(text)
-                        
-                        if texts:
-                            full_text = '\n\n'.join(texts)
-                            if self.verbosity >= 2:
-                                self.stdout.write(f"      ✅ Нашли description через заголовок, длина: {len(full_text)}")
-                            return self.clean_text(full_text)
+            if texts:
+                full_text = '\n\n'.join(texts)
+                # Убираем слово "Description" в начале, если оно есть
+                full_text = self.remove_header(full_text, 'Description')
+                return self.clean_text(full_text)
         
-        # СПОСОБ 2: Ищем секцию, содержащую patent-text с description
-        for section in soup.find_all('section'):
-            patent_text = section.find('patent-text')
-            if patent_text:
-                desc_div = patent_text.find('div', class_='description')
-                if desc_div:
-                    if self.verbosity >= 2:
-                        self.stdout.write("      ✅ parse_description: найден через поиск по секциям")
-                    texts = []
-                    for p in desc_div.find_all('div', class_='description-paragraph'):
-                        text = p.get_text(strip=True)
-                        if text and self.contains_cyrillic(text):
-                            text = re.sub(r'^\s*\d+\s+', '', text)
-                            texts.append(text)
-                    
-                    if texts:
-                        full_text = '\n\n'.join(texts)
-                        return self.clean_text(full_text)
+        # СПОСОБ 2: Ищем секцию с заголовком "Description"
+        desc_header = soup.find(['h2', 'h3'], string=re.compile(r'Description', re.I))
+        if desc_header:
+            parent = desc_header.find_parent('section')
+            if parent:
+                text = parent.get_text(strip=True)
+                if text and self.contains_cyrillic(text):
+                    # Убираем заголовок "Description" из текста
+                    header_text = desc_header.get_text(strip=True)
+                    if text.startswith(header_text):
+                        text = text[len(header_text):].strip()
+                    return self.clean_text(text)
         
-        if self.verbosity >= 2:
-            self.stdout.write("      ❌ parse_description: ничего не найдено")
         return None
 
     def parse_claims(self, soup):
-        """Извлечение формулы из секции claims"""
+        """Извлечение формулы"""
         if not soup:
-            if self.verbosity >= 2:
-                self.stdout.write("      ❌ parse_claims: soup is None")
             return None
         
-        if self.verbosity >= 2:
-            self.stdout.write("      🔍 parse_claims: начинаем поиск")
-        
-        # СПОСОБ 1: Ищем по заголовку h3 с текстом "Claims"
-        claims_header = soup.find('h3', string=re.compile(r'Claims', re.I))
-        if claims_header:
-            if self.verbosity >= 2:
-                self.stdout.write("      ✅ parse_claims: найден заголовок 'Claims'")
-            
-            parent_section = claims_header.find_parent('section')
-            if parent_section:
-                patent_text = parent_section.find('patent-text')
-                if patent_text:
-                    claims_div = patent_text.find('div', class_='claims')
-                    if claims_div:
-                        texts = self.extract_claims_text(claims_div)
-                        if texts:
-                            full_text = '\n\n'.join(texts)
-                            if self.verbosity >= 2:
-                                self.stdout.write(f"      ✅ Нашли claims через заголовок, количество пунктов: {len(texts)}")
-                            return self.clean_text(full_text)
-        
-        # СПОСОБ 2: Ищем секцию, содержащую patent-text с claims
-        for section in soup.find_all('section'):
-            patent_text = section.find('patent-text')
-            if patent_text:
-                claims_div = patent_text.find('div', class_='claims')
-                if claims_div:
-                    if self.verbosity >= 2:
-                        self.stdout.write("      ✅ parse_claims: найден через поиск по секциям")
-                    texts = self.extract_claims_text(claims_div)
-                    if texts:
-                        full_text = '\n\n'.join(texts)
-                        return self.clean_text(full_text)
-        
-        if self.verbosity >= 2:
-            self.stdout.write("      ❌ parse_claims: ничего не найдено")
-        return None
-
-    def extract_claims_text(self, claims_div):
-        """Вспомогательный метод для извлечения текста из claims div"""
-        texts = []
-        
-        # Основные пункты
-        for claim in claims_div.find_all('div', class_='claim'):
-            claim_text = claim.find('div', class_='claim-text')
-            if claim_text:
-                text = claim_text.get_text(strip=True)
-                if text and self.contains_cyrillic(text):
-                    texts.append(text)
-        
-        # Зависимые пункты
-        for claim_dep in claims_div.find_all('div', class_='claim-dependent'):
-            claim = claim_dep.find('div', class_='claim')
-            if claim:
+        # СПОСОБ 1: Ищем claims с lang="RU"
+        claims_elem = soup.find('claims', {'lang': 'RU'})
+        if claims_elem:
+            texts = []
+            for claim in claims_elem.find_all('div', class_='claim'):
                 claim_text = claim.find('div', class_='claim-text')
                 if claim_text:
                     text = claim_text.get_text(strip=True)
                     if text and self.contains_cyrillic(text):
                         texts.append(text)
+            
+            if texts:
+                full_text = '\n\n'.join(texts)
+                # Убираем слово "Claims" в начале, если оно есть
+                full_text = self.remove_header(full_text, 'Claims')
+                return self.clean_text(full_text)
         
-        return texts
+        # СПОСОБ 2: Ищем секцию с заголовком "Claims"
+        claims_header = soup.find(['h2', 'h3'], string=re.compile(r'Claims', re.I))
+        if claims_header:
+            parent = claims_header.find_parent('section')
+            if parent:
+                text = parent.get_text(strip=True)
+                if text and self.contains_cyrillic(text):
+                    # Убираем заголовок
+                    header_text = claims_header.get_text(strip=True)
+                    if text.startswith(header_text):
+                        text = text[len(header_text):].strip()
+                    return self.clean_text(text)
+        
+        return None
+
+    def remove_header(self, text, header):
+        """Удаляет заголовок из начала текста, если он там есть"""
+        if not text or not header:
+            return text
+        
+        # Проверяем разные варианты написания
+        patterns = [
+            rf'^{header}\s*',           # "Description" в начале
+            rf'^{header}:\s*',          # "Description:" в начале
+            rf'^{header}\s+translated\s+from\s*',  # "Description translated from"
+            rf'^{header}\s+translated\s+from:?\s*', # "Description translated from:"
+        ]
+        
+        for pattern in patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+                break
+        
+        return text.strip()
 
     def parse_programming_languages(self, soup):
         """Извлечение языков программирования"""
@@ -894,11 +816,9 @@ class Command(BaseCommand):
         
         text = soup.get_text()
         
-        # Список популярных языков программирования
         prog_langs = [
             'Python', 'Java', 'C++', 'JavaScript', 'C#', 'PHP', 'Ruby', 
             'Swift', 'Kotlin', 'Go', 'Rust', 'TypeScript', 'Perl', 'Scala',
-            'Dart', 'Lua', 'Haskell', 'Clojure', 'Elixir'
         ]
         
         found_langs = []
@@ -915,11 +835,9 @@ class Command(BaseCommand):
         
         text = soup.get_text()
         
-        # Список популярных СУБД
         dbms_list = [
             'MySQL', 'PostgreSQL', 'Oracle', 'Microsoft SQL Server', 'SQLite',
-            'MongoDB', 'Redis', 'Cassandra', 'MariaDB', 'DB2', 'Firebird',
-            'CouchDB', 'DynamoDB', 'Elasticsearch'
+            'MongoDB', 'Redis', 'Cassandra', 'MariaDB', 'DB2',
         ]
         
         found_dbms = []
@@ -956,8 +874,7 @@ class Command(BaseCommand):
                 self.stdout.write("   📝 DRY-RUN: данные для обновления:")
                 for target_field, field_data in parsed_data.items():
                     new_value = field_data['value']
-                    current_value = getattr(ip_object, target_field)
-
+                    
                     if field_data.get('is_m2m', False):
                         current = list(getattr(ip_object, target_field).all())
                         self.stdout.write(f"      {target_field}: {current} -> {new_value}")
@@ -986,7 +903,6 @@ class Command(BaseCommand):
                         updated = True
 
             if updated:
-                # Сохраняем только обновленные поля
                 update_fields = list(parsed_data.keys())
                 ip_object.save(update_fields=update_fields)
 
