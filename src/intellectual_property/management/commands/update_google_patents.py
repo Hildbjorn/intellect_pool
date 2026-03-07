@@ -4,17 +4,15 @@
 
 Использует requests для получения HTML страниц и BeautifulSoup для парсинга.
 
-Логика работы:
-1. Определяет, какие записи нужно обновить (пустые поля или --force)
-2. Делает запросы к Google Patents с ротацией User-Agent
-3. Парсит HTML и извлекает abstract, description, claims
-4. Сохраняет результаты пакетами (bulk_update) для оптимизации производительности
+Логика работы в два этапа:
+1. СБОР: формирует список ID записей, которые нужно обработать (пустые поля или --force)
+2. ОБРАБОТКА: проходит по собранному списку, парсит страницы и сохраняет результаты
 
-Архитектура:
-- Отдельные методы для каждого этапа обработки
-- Пакетное накопление и сохранение результатов
-- Детальная статистика по типам РИД
-- Обработка rate limiting и ошибок
+Преимущества:
+- Чёткое разделение этапов
+- Возможность прервать и продолжить обработку
+- Лучший контроль над процессом
+- Возможность сохранять список для отладки
 """
 
 import logging
@@ -22,8 +20,11 @@ import re
 import time
 import random
 import sys
+import json
+import os
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple, Set
+from pathlib import Path
 
 import requests
 from django.core.management.base import BaseCommand, CommandError
@@ -43,7 +44,7 @@ class RateLimitException(Exception):
 
 
 class Command(BaseCommand):
-    help = 'Обновление данных РИД прямым парсингом Google Patents'
+    help = 'Обновление данных РИД прямым парсингом Google Patents (двухэтапный режим)'
 
     # =========================================================================
     # НАСТРОЙКИ ПО УМОЛЧАНИЮ
@@ -51,10 +52,10 @@ class Command(BaseCommand):
     DEFAULT_BATCH_SIZE = 100      # Размер пачки для записи в БД
     DEFAULT_DELAY = 2.0            # Базовая задержка между запросами (сек)
     DEFAULT_TIMEOUT = 30           # Таймаут HTTP запроса (сек)
-    DEFAULT_MAX_RETRIES = 3        # Максимальное количество повторов при ошибке
+    DEFAULT_MAX_REQUESTS = None    # Максимальное количество запросов (без лимита)
+    DEFAULT_LIST_FILE = 'patent_ids_to_process.json'  # Файл для сохранения списка ID
 
     # Типы РИД, по которым заведомо нет данных в Google Patents
-    # (программы, базы данных, топологии не индексируются)
     SKIP_TYPES = {
         'integrated-circuit-topology',
         'computer-program',
@@ -98,7 +99,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--max-requests',
             type=int,
-            default=None,
+            default=self.DEFAULT_MAX_REQUESTS,
             help='Максимальное количество запросов (для тестирования)'
         )
 
@@ -161,6 +162,34 @@ class Command(BaseCommand):
             help='Предпочитать русские тексты (включено по умолчанию)'
         )
 
+        # НОВЫЕ АРГУМЕНТЫ ДЛЯ ДВУХЭТАПНОГО РЕЖИМА
+        parser.add_argument(
+            '--stage',
+            type=str,
+            choices=['collect', 'process', 'both'],
+            default='both',
+            help='Этап выполнения: collect (только сбор ID), process (только обработка), both (оба этапа)'
+        )
+
+        parser.add_argument(
+            '--list-file',
+            type=str,
+            default=self.DEFAULT_LIST_FILE,
+            help=f'Файл для сохранения/загрузки списка ID патентов (по умолчанию {self.DEFAULT_LIST_FILE})'
+        )
+
+        parser.add_argument(
+            '--resume',
+            action='store_true',
+            help='Продолжить обработку с последнего сохранённого прогресса'
+        )
+
+        parser.add_argument(
+            '--keep-list',
+            action='store_true',
+            help='Не удалять файл со списком после успешной обработки'
+        )
+
     def __init__(self, *args, **kwargs):
         """Инициализация команды: карты полей, статистика, HTTP сессия"""
         super().__init__(*args, **kwargs)
@@ -176,7 +205,6 @@ class Command(BaseCommand):
         }
 
         # Карта полей для каждого типа РИД
-        # Каждый тип знает, какие поля ему нужно парсить
         self.type_fields_map = {
             'invention': {
                 'abstract': {'target': 'abstract', 'is_main': True},
@@ -219,6 +247,11 @@ class Command(BaseCommand):
             'rate_limited': 0,            # Срабатываний rate limit
             'special_messages': 0,        # Специальные сообщения (нет документа)
             'by_type': {},                 # Детальная статистика по типам
+            'collection': {                # Статистика этапа сбора
+                'total_candidates': 0,
+                'collected_ids': 0,
+                'skipped_types': 0,
+            }
         }
 
         # HTTP сессия для поддержки keep-alive и кук
@@ -226,7 +259,12 @@ class Command(BaseCommand):
         self.request_count = 0            # Счётчик запросов
         self.start_id = None              # ID записи, с которой начали
 
-        # Пул современных User-Agent'ов для мимикрии под реального пользователя
+        # Для двухэтапного режима
+        self.patent_ids_to_process = []   # Список ID для обработки
+        self.processed_ids = set()         # Множество уже обработанных ID
+        self.progress_file = None          # Файл для сохранения прогресса
+
+        # Пул современных User-Agent'ов
         self.user_agents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
@@ -236,7 +274,7 @@ class Command(BaseCommand):
             'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         ]
 
-        # Варианты Accept-Language для разнообразия
+        # Варианты Accept-Language
         self.accept_languages = [
             'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
             'ru,en-US;q=0.9,en;q=0.8,uk;q=0.7',
@@ -251,9 +289,67 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         """
         Главный метод команды.
-        Инициализирует параметры, запускает обработку, обрабатывает ошибки.
+        Реализует двухэтапную обработку: сбор ID и обработку.
         """
-        # Сохраняем параметры в self для доступа из других методов
+        # Сохраняем параметры
+        self._init_params(options)
+        
+        # Выводим приветствие
+        self._print_header()
+
+        # Определяем этапы выполнения
+        stage = options['stage']
+        self.list_file = options['list_file']
+        self.resume = options['resume']
+        self.keep_list = options['keep_list']
+
+        # Инициализируем HTTP сессию
+        self._init_session()
+
+        # ЭТАП 1: Сбор ID (если нужно)
+        if stage in ['collect', 'both']:
+            self._collect_ids_to_process()
+            
+            # Если только сбор - завершаем
+            if stage == 'collect':
+                self.stdout.write(self.style.SUCCESS(
+                    f"\n✅ Этап сбора завершён. Список сохранён в {self.list_file}"
+                ))
+                return
+
+        # ЭТАП 2: Обработка (если нужно)
+        if stage in ['process', 'both']:
+            # Загружаем список ID для обработки
+            if not self._load_ids_to_process():
+                return
+
+            # Инициализируем статистику по типам
+            for slug in self.type_slugs.values():
+                self.stats['by_type'][slug] = {
+                    'total': 0,
+                    'success': 0,
+                    'failed': 0,
+                    'rate_limited': 0,
+                    'special': 0
+                }
+
+            # Загружаем прогресс если нужно
+            if self.resume:
+                self._load_progress()
+
+            # Запускаем обработку
+            self._process_id_list()
+
+        # Финальная статистика
+        self._print_final_stats()
+
+        # Очищаем временные файлы если нужно
+        if not self.keep_list and os.path.exists(self.list_file):
+            os.remove(self.list_file)
+            self.stdout.write(self.style.SUCCESS(f"🧹 Временный файл {self.list_file} удалён"))
+
+    def _init_params(self, options):
+        """Инициализация параметров из командной строки"""
         self.verbosity = options['verbosity']
         self.batch_size = options['batch_size']
         self.delay = options['delay']
@@ -265,57 +361,20 @@ class Command(BaseCommand):
         self.start_from_id = options['start_from_id']
         self.human_mode = options['human_mode']
         self.prefer_russian = options.get('prefer_russian', True)
+        self.ip_type_param = options['ip_type']
 
-        # Определяем порядок сортировки записей
+        # Определяем порядок сортировки
         if options['start_from_oldest']:
             self.order_by = 'registration_date'
             self.order_desc = False
-            order_text = "от старых к новым"
+            self.order_text = "от старых к новым"
         else:
             self.order_by = 'registration_date'
             self.order_desc = True
-            order_text = "от новых к старым"
+            self.order_text = "от новых к старым"
 
-        ip_type_param = options['ip_type']
-
-        # Выводим приветствие с параметрами
-        self._print_header(order_text)
-
-        # Инициализируем HTTP сессию
-        self._init_session()
-
-        # Получаем список слагов типов для обработки
-        type_slugs_to_process = self._get_type_slugs(ip_type_param)
-
-        # Инициализируем статистику по типам
-        for slug in type_slugs_to_process:
-            self.stats['by_type'][slug] = {
-                'total': 0,
-                'success': 0,
-                'failed': 0,
-                'rate_limited': 0,
-                'special': 0
-            }
-
-        # Запускаем основной цикл обработки с обработкой исключений
-        try:
-            self._run_processing(type_slugs_to_process)
-        except KeyboardInterrupt:
-            self.stdout.write(self.style.WARNING("\n\n⏹️ Обработка прервана пользователем"))
-            self._print_final_stats()
-            sys.exit(1)
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"\n💥 Критическая ошибка: {e}"))
-            logger.error(f"Critical error: {e}", exc_info=True)
-            self._print_final_stats()
-            sys.exit(1)
-
-    # =========================================================================
-    # МЕТОДЫ ИНИЦИАЛИЗАЦИИ И НАСТРОЙКИ
-    # =========================================================================
-
-    def _print_header(self, order_text: str):
-        """Выводит красивый заголовок с параметрами запуска"""
+    def _print_header(self):
+        """Выводит заголовок с параметрами запуска"""
         self.stdout.write(self.style.SUCCESS("\n" + "="*80))
         self.stdout.write(self.style.SUCCESS("🚀 ЗАПУСК ОБНОВЛЕНИЯ ДАННЫХ РИД ИЗ GOOGLE PATENTS"))
         self.stdout.write(self.style.SUCCESS("="*80))
@@ -323,7 +382,8 @@ class Command(BaseCommand):
         if self.force:
             self.stdout.write(self.style.WARNING("\n📌 РЕЖИМ: принудительное обновление (--force)"))
 
-        self.stdout.write(f"\n📌 Порядок обработки: {order_text}")
+        self.stdout.write(f"\n📌 Тип РИД: {self.ip_type_param}")
+        self.stdout.write(f"📌 Порядок обработки: {self.order_text}")
         self.stdout.write(f"📌 Пакетная запись: {self.batch_size} записей")
         self.stdout.write(f"📌 Предпочитать русские тексты: {'ДА' if self.prefer_russian else 'НЕТ'}")
 
@@ -338,29 +398,15 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("\n🔍 РЕЖИМ DRY-RUN: изменения НЕ будут сохранены\n"))
 
     def _get_type_slugs(self, ip_type_param: str) -> List[str]:
-        """
-        Преобразует параметр --ip-type в список слагов для обработки.
-
-        Args:
-            ip_type_param: Значение параметра (invention, all и т.д.)
-
-        Returns:
-            Список слагов типов РИД для обработки
-        """
+        """Получение списка слагов типов для обработки"""
         if ip_type_param == 'all':
-            type_slugs = list(self.type_slugs.values())
-            self.stdout.write(f"📋 Обработка всех типов РИД: {', '.join(type_slugs)}")
-            return type_slugs
+            return list(self.type_slugs.values())
         else:
-            type_slugs = [self.type_slugs[ip_type_param]]
-            self.stdout.write(f"📋 Обработка типа РИД: {ip_type_param}")
-            return type_slugs
+            return [self.type_slugs[ip_type_param]]
 
     def _init_session(self):
         """Инициализирует HTTP сессию с базовыми заголовками"""
         self.session = requests.Session()
-
-        # Базовые заголовки, имитирующие браузер
         self.session.headers.update({
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -370,219 +416,208 @@ class Command(BaseCommand):
         })
 
     def _rotate_headers(self):
-        """
-        Ротирует заголовки для каждого запроса.
-        Это помогает избежать блокировки при большом количестве запросов.
-        """
+        """Ротация заголовков для каждого запроса"""
         if not self.human_mode:
             return
-
         self.session.headers.update({
             'User-Agent': random.choice(self.user_agents),
             'Accept-Language': random.choice(self.accept_languages),
         })
 
     def _apply_delay(self):
-        """
-        Умная задержка между запросами.
-        Имитирует поведение человека: периодические длинные паузы,
-        случайные вариации времени чтения страницы.
-        """
+        """Умная задержка между запросами"""
         if self.delay <= 0:
             return
-
         if not self.human_mode:
             time.sleep(self.delay)
             return
-
-        # Длинная пауза каждые 30-70 запросов (как будто человек отошёл)
+        
         if self.request_count % random.randint(30, 70) == 0 and self.request_count > 0:
             long_delay = random.uniform(10, 40)
             if self.verbosity >= 1:
                 self.stdout.write(f"\n   💤 ДЛИННАЯ ПАУЗА {long_delay:.1f} сек...")
             time.sleep(long_delay)
             return
-
-        # Средняя пауза каждые 10-20 запросов (изучение страницы)
+        
         if self.request_count % random.randint(10, 20) == 0 and self.request_count > 0:
             medium_delay = random.uniform(5, 20)
             if self.verbosity >= 2:
                 self.stdout.write(f"\n   ⏱️ ПАУЗА {medium_delay:.1f} сек (изучение)...")
             time.sleep(medium_delay)
             return
-
-        # Базовая случайная задержка
+        
         base_delay = self.delay * random.uniform(0.7, 2.5)
         time.sleep(base_delay)
 
     # =========================================================================
-    # МЕТОДЫ РАБОТЫ С БАЗОЙ ДАННЫХ (QUERYSET)
+    # ЭТАП 1: СБОР ID ЗАПИСЕЙ ДЛЯ ОБРАБОТКИ
     # =========================================================================
 
-    def _get_queryset(self, type_slugs: List[str]) -> models.QuerySet:
+    def _collect_ids_to_process(self):
         """
-        Формирует queryset записей для обработки с учётом параметров.
-
-        Args:
-            type_slugs: Список слагов типов для обработки
-
-        Returns:
-            QuerySet объектов IPObject для обработки
+        Собирает ID записей, которые нужно обработать.
+        Сохраняет их в файл для последующей обработки.
         """
+        self.stdout.write(self.style.SUCCESS("\n📋 ЭТАП 1: СБОР ID ЗАПИСЕЙ ДЛЯ ОБРАБОТКИ"))
+        
+        # Получаем типы для обработки
+        type_slugs = self._get_type_slugs(self.ip_type_param)
         ip_types = IPType.objects.filter(slug__in=type_slugs)
 
-        # Базовый queryset: только записи с регистрационным номером
-        queryset = IPObject.objects.filter(
+        # Формируем базовый queryset
+        base_queryset = IPObject.objects.filter(
             ip_type__in=ip_types,
             registration_number__isnull=False
         ).exclude(
             registration_number=''
         ).select_related('ip_type')
 
-        # Определяем стартовую позицию
+        # Применяем стартовую позицию если указана
         if self.start_from_id:
-            # Явно указанный ID
-            self.start_id = self.start_from_id
-            self.stdout.write(self.style.WARNING(f"🎯 Старт с ID: {self.start_id}"))
-            queryset = queryset.filter(id__gte=self.start_id)
-
-        elif self.force:
-            # Принудительно с начала (обрабатываем все записи, независимо от заполненности)
-            self.stdout.write(self.style.WARNING("🎯 Режим --force: обрабатываем все записи"))
-
-        else:
-            # Автоматически находим первую запись с пустыми полями
-            self.start_id = self._find_first_empty_record(queryset, ip_types)
-
-            if self.start_id:
-                self.stdout.write(self.style.WARNING(
-                    f"🎯 Начинаем с ID {self.start_id} (первая запись с пустыми полями)"
-                ))
-                queryset = queryset.filter(id__gte=self.start_id)
-            else:
-                self.stdout.write(self.style.SUCCESS(
-                    "✅ Все записи имеют заполненные поля! Обновлять нечего."
-                ))
-                return IPObject.objects.none()
+            base_queryset = base_queryset.filter(id__gte=self.start_from_id)
+            self.stdout.write(self.style.WARNING(f"🎯 Старт с ID: {self.start_from_id}"))
 
         # Применяем сортировку
         if self.order_by:
             order_field = self.order_by
             if self.order_desc:
                 order_field = f'-{order_field}'
-            queryset = queryset.order_by(order_field)
+            base_queryset = base_queryset.order_by(order_field)
 
-        return queryset
+        # Получаем общее количество кандидатов
+        total_candidates = base_queryset.count()
+        self.stats['collection']['total_candidates'] = total_candidates
+        self.stdout.write(f"\n📊 Всего кандидатов: {total_candidates}")
 
-    def _find_first_empty_record(self, queryset: models.QuerySet,
-                                  ip_types: models.QuerySet) -> Optional[int]:
-        """
-        Находит ID первой записи, у которой хотя бы одно поле пустое.
-        Используется только когда не включён режим --force.
-
-        Args:
-            queryset: Базовый queryset для поиска
-            ip_types: Типы РИД для проверки
-
-        Returns:
-            ID первой пустой записи или None
-        """
-        # Собираем типы, у которых есть поля для парсинга
-        types_with_fields = []
-        for ip_type in ip_types:
-            fields_map = self.type_fields_map.get(ip_type.slug, {})
-            if fields_map:
-                types_with_fields.append(ip_type)
-
-        if not types_with_fields:
-            self.stdout.write(self.style.WARNING("⚠️ Нет типов РИД с полями для парсинга"))
-            return None
-
-        # Определяем порядок сортировки
-        order_by = '-registration_date' if self.order_desc else 'registration_date'
-
-        # Строим условия для проверки пустых полей
-        empty_conditions = Q()
-        for ip_type in types_with_fields:
-            fields_map = self.type_fields_map.get(ip_type.slug, {})
-            type_conditions = Q(ip_type=ip_type) & (
-                Q(abstract__isnull=True) | Q(abstract='') |
-                Q(description__isnull=True) | Q(description='') |
-                Q(claims__isnull=True) | Q(claims='')
-            )
-            empty_conditions |= type_conditions
-
-        # Ищем первую запись, удовлетворяющую условиям
-        empty_qs = IPObject.objects.filter(
-            registration_number__isnull=False
-        ).exclude(
-            registration_number=''
-        ).filter(empty_conditions).order_by(order_by, 'id')
-
-        first_empty = empty_qs.first()
-        return first_empty.id if first_empty else None
-
-    # =========================================================================
-    # ОСНОВНОЙ ЦИКЛ ОБРАБОТКИ С ПАКЕТНОЙ ЗАПИСЬЮ
-    # =========================================================================
-
-    def _run_processing(self, type_slugs_to_process: List[str]):
-        """
-        Запускает основной цикл обработки с пакетным сохранением.
-
-        Args:
-            type_slugs_to_process: Список типов для обработки
-        """
-        # Получаем queryset записей для обработки
-        queryset = self._get_queryset(type_slugs_to_process)
-        self.stats['total'] = queryset.count()
-
-        self.stdout.write(f"\n📊 Найдено записей для обработки: {self.stats['total']}")
-
-        if self.stats['total'] == 0:
+        if total_candidates == 0:
             self.stdout.write(self.style.WARNING("⚠️ Нет записей для обработки"))
             return
 
-        # Обрабатываем с пакетным накоплением
-        self._process_with_batch_updates(queryset)
+        # Формируем условия для поиска записей, которые нужно обработать
+        if self.force:
+            # В режиме --force берём все записи
+            need_update_qs = base_queryset
+            self.stdout.write(self.style.WARNING("🎯 Режим --force: обрабатываем ВСЕ записи"))
+        else:
+            # Ищем записи с пустыми полями
+            need_update_conditions = Q()
+            for slug in type_slugs:
+                fields_map = self.type_fields_map.get(slug, {})
+                if fields_map:
+                    type_conditions = Q(ip_type__slug=slug) & (
+                        Q(abstract__isnull=True) | Q(abstract='') |
+                        Q(description__isnull=True) | Q(description='') |
+                        Q(claims__isnull=True) | Q(claims='')
+                    )
+                    need_update_conditions |= type_conditions
+            
+            need_update_qs = base_queryset.filter(need_update_conditions)
+            
+            # Пропускаем типы, по которым заведомо нет данных
+            need_update_qs = need_update_qs.exclude(ip_type__slug__in=self.SKIP_TYPES)
+            skipped_count = base_queryset.filter(ip_type__slug__in=self.SKIP_TYPES).count()
+            self.stats['collection']['skipped_types'] = skipped_count
+            if skipped_count > 0:
+                self.stdout.write(self.style.WARNING(
+                    f"⏭️ Пропущено {skipped_count} записей типов {', '.join(self.SKIP_TYPES)}"
+                ))
 
-        # Выводим итоговую статистику
-        self._print_final_stats()
+        # Получаем список ID для обработки
+        id_list = list(need_update_qs.values_list('id', flat=True))
+        self.stats['collection']['collected_ids'] = len(id_list)
 
-    def _process_with_batch_updates(self, queryset: models.QuerySet):
+        self.stdout.write(self.style.SUCCESS(
+            f"\n✅ Собрано {len(id_list)} ID для обработки"
+        ))
+
+        # Сохраняем в файл
+        with open(self.list_file, 'w', encoding='utf-8') as f:
+            json.dump({
+                'collected_at': datetime.now().isoformat(),
+                'total_candidates': total_candidates,
+                'collected_ids': len(id_list),
+                'skipped_types': self.stats['collection']['skipped_types'],
+                'ids': id_list
+            }, f, ensure_ascii=False, indent=2)
+
+        self.stdout.write(self.style.SUCCESS(f"💾 Список сохранён в {self.list_file}"))
+
+    def _load_ids_to_process(self) -> bool:
         """
-        Обрабатывает записи с накоплением изменений и пакетной записью.
-
-        Args:
-            queryset: QuerySet записей для обработки
+        Загружает список ID для обработки из файла.
+        
+        Returns:
+            True если загрузка успешна, иначе False
         """
-        total = queryset.count()
-
-        # Применяем лимит запросов, если задан
-        if self.max_requests and self.max_requests < total:
-            self.stdout.write(self.style.WARNING(
-                f"\n⏹️ Будет обработано только {self.max_requests} записей из {total} (лимит запросов)"
+        if not os.path.exists(self.list_file):
+            self.stdout.write(self.style.ERROR(
+                f"❌ Файл со списком ID не найден: {self.list_file}\n"
+                f"   Сначала выполните сбор: --stage=collect"
             ))
-            queryset = queryset[:self.max_requests]
-            total = self.max_requests
+            return False
 
-        # Буфер для накопления обновлений перед пакетной записью
+        try:
+            with open(self.list_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            self.patent_ids_to_process = data['ids']
+            self.stats['total'] = len(self.patent_ids_to_process)
+            
+            self.stdout.write(self.style.SUCCESS(
+                f"\n📋 ЭТАП 2: ОБРАБОТКА {len(self.patent_ids_to_process)} ЗАПИСЕЙ"
+            ))
+            self.stdout.write(f"📊 Данные собраны: {data['collected_at']}")
+            self.stdout.write(f"   • Всего кандидатов: {data['total_candidates']}")
+            self.stdout.write(f"   • Пропущено типов: {data.get('skipped_types', 0)}")
+            
+            return True
+            
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"❌ Ошибка загрузки файла: {e}"))
+            return False
+
+    # =========================================================================
+    # ЭТАП 2: ОБРАБОТКА ЗАПИСЕЙ ПО ID
+    # =========================================================================
+
+    def _process_id_list(self):
+        """
+        Обрабатывает список ID с пакетным сохранением.
+        """
+        total = len(self.patent_ids_to_process)
+        
+        # Буфер для накопления обновлений
         update_batch = []
 
-        # Прогресс-бар для визуализации процесса
+        # Прогресс-бар
         with tqdm(total=total, desc="Обработка записей", unit="зап") as pbar:
-            for ip_object in queryset.iterator(chunk_size=self.batch_size):
+            for idx, obj_id in enumerate(self.patent_ids_to_process):
+                
+                # Пропускаем уже обработанные
+                if obj_id in self.processed_ids:
+                    pbar.update(1)
+                    continue
+
                 # Проверка лимита запросов
                 if self.max_requests and self.request_count >= self.max_requests:
                     self.stdout.write(self.style.WARNING(
                         f"\n⏹️ Достигнут лимит запросов ({self.max_requests})"
                     ))
-                    # Сохраняем остаток перед выходом
+                    self._save_progress(idx)
                     if update_batch:
                         self._bulk_update_objects(update_batch)
                     return
 
                 try:
+                    # Получаем объект из БД
+                    try:
+                        ip_object = IPObject.objects.get(id=obj_id)
+                    except IPObject.DoesNotExist:
+                        self.stats['errors'] += 1
+                        self.processed_ids.add(obj_id)
+                        pbar.update(1)
+                        continue
+
                     # Обрабатываем одну запись
                     update_item = self._process_single_object(ip_object)
 
@@ -590,28 +625,34 @@ class Command(BaseCommand):
                     if update_item:
                         update_batch.append(update_item)
 
+                    # Помечаем как обработанный
+                    self.processed_ids.add(obj_id)
+
                     # Если буфер заполнен, выполняем пакетную запись
                     if len(update_batch) >= self.batch_size:
                         self._bulk_update_objects(update_batch)
                         update_batch = []
+                        
+                        # Сохраняем прогресс каждые 1000 записей
+                        if len(self.processed_ids) % 1000 == 0:
+                            self._save_progress(idx)
 
                 except RateLimitException:
-                    # При rate limit сначала сохраняем накопленное
                     self.stats['rate_limited'] += 1
                     if update_batch:
                         self._bulk_update_objects(update_batch)
                         update_batch = []
-
+                    self._save_progress(idx)
+                    
                     if self.verbosity >= 1:
                         self.stdout.write(self.style.WARNING("\n   ⏳ Rate limit. Пауза 60 сек..."))
                     time.sleep(60)
 
                 except Exception as e:
-                    # Логируем неожиданные ошибки, но продолжаем работу
                     self.stats['errors'] += 1
                     if self.verbosity >= 1:
                         self.stdout.write(self.style.ERROR(f"\n❌ Неожиданная ошибка: {e}"))
-                    logger.error(f"Unexpected error processing IPObject {ip_object.id}: {e}", exc_info=True)
+                    logger.error(f"Unexpected error processing ID {obj_id}: {e}", exc_info=True)
 
                 # Обновляем прогресс-бар
                 pbar.update(1)
@@ -623,12 +664,73 @@ class Command(BaseCommand):
                     'REQ': self.request_count
                 })
 
-                # Делаем паузу перед следующим запросом
+                # Делаем паузу
                 self._apply_delay()
 
             # Сохраняем остаток после завершения цикла
             if update_batch:
                 self._bulk_update_objects(update_batch)
+            
+            # Удаляем файл прогресса если он был
+            if self.progress_file and os.path.exists(self.progress_file):
+                os.remove(self.progress_file)
+
+    def _save_progress(self, last_index: int):
+        """
+        Сохраняет текущий прогресс для возможности возобновления.
+        """
+        if not self.progress_file:
+            self.progress_file = f"{self.list_file}.progress.json"
+        
+        progress_data = {
+            'last_index': last_index,
+            'processed_ids': list(self.processed_ids),
+            'request_count': self.request_count,
+            'stats': self.stats,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        with open(self.progress_file, 'w', encoding='utf-8') as f:
+            json.dump(progress_data, f, ensure_ascii=False, indent=2)
+        
+        if self.verbosity >= 1:
+            self.stdout.write(self.style.WARNING(
+                f"\n💾 Прогресс сохранён (обработано {len(self.processed_ids)} записей)"
+            ))
+
+    def _load_progress(self):
+        """
+        Загружает прогресс из файла.
+        """
+        progress_file = f"{self.list_file}.progress.json"
+        
+        if not os.path.exists(progress_file):
+            self.stdout.write(self.style.WARNING(
+                "⚠️ Файл прогресса не найден, начинаем с начала"
+            ))
+            self.processed_ids = set()
+            return
+        
+        try:
+            with open(progress_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            self.processed_ids = set(data['processed_ids'])
+            self.request_count = data.get('request_count', 0)
+            # Восстанавливаем статистику
+            for key in ['success', 'failed', 'errors', 'rate_limited', 'special_messages']:
+                if key in data['stats']:
+                    self.stats[key] = data['stats'][key]
+            
+            self.stdout.write(self.style.SUCCESS(
+                f"\n✅ Загружен прогресс: обработано {len(self.processed_ids)} записей"
+            ))
+            
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(
+                f"❌ Ошибка загрузки прогресса: {e}\n   Начинаем с начала"
+            ))
+            self.processed_ids = set()
 
     # =========================================================================
     # ОБРАБОТКА ОДНОГО ОБЪЕКТА
@@ -678,7 +780,6 @@ class Command(BaseCommand):
             return None
 
         # В режиме --force мы не пропускаем записи, даже если поля заполнены
-        # Но для статистики нам нужно знать, были ли поля заполнены до обновления
         if not self.force:
             # Проверяем, нужно ли обновлять запись (есть ли пустые поля)
             if not self._needs_update(ip_object, fields_map):
@@ -762,10 +863,8 @@ class Command(BaseCommand):
         """
         # Очищаем номер от лишних символов
         clean_number = re.sub(r'[^\w]', '', registration_number)
-
         # Убираем возможный префикс RU для унификации
         clean_number = re.sub(r'^RU', '', clean_number, flags=re.IGNORECASE)
-
         # Всегда добавляем RU
         return f"RU{clean_number}"
 
@@ -1263,28 +1362,6 @@ class Command(BaseCommand):
         full_text = '\n\n'.join(texts)
         return self._clean_text(full_text)
 
-    def _clean_text(self, text: str) -> str:
-        """
-        Очищает текст от HTML тегов и лишних пробелов.
-        Сохраняет переносы строк как есть.
-        
-        Args:
-            text: Исходный текст
-            
-        Returns:
-            Очищенный текст
-        """
-        if not text or not isinstance(text, str):
-            return text
-
-        # Удаляем HTML теги (но сохраняем текст внутри них)
-        text = re.sub(r'<[^>]+>', '', text)
-        
-        # Убираем лишние пробелы в начале и конце строк
-        text = text.strip()
-        
-        return text
-
     def _parse_programming_languages(self, soup: BeautifulSoup) -> Optional[List[str]]:
         """
         Извлекает упоминания языков программирования из текста.
@@ -1300,7 +1377,6 @@ class Command(BaseCommand):
 
         text = soup.get_text()
 
-        # Список популярных языков программирования
         prog_langs = [
             'Python', 'Java', 'C++', 'JavaScript', 'C#', 'PHP', 'Ruby',
             'Swift', 'Kotlin', 'Go', 'Rust', 'TypeScript', 'Perl', 'Scala',
@@ -1361,23 +1437,21 @@ class Command(BaseCommand):
     def _clean_text(self, text: str) -> str:
         """
         Очищает текст от HTML тегов и лишних пробелов.
-
+        Сохраняет переносы строк как есть.
+        
         Args:
             text: Исходный текст
-
+            
         Returns:
             Очищенный текст
         """
         if not text or not isinstance(text, str):
             return text
 
-        # Удаляем HTML теги
+        # Удаляем HTML теги (но сохраняем текст внутри них)
         text = re.sub(r'<[^>]+>', '', text)
-        # Заменяем множественные пробелы и переносы на один пробел
-        text = re.sub(r'\s+', ' ', text)
-        # Убираем пробелы в начале и конце
+        # Убираем лишние пробелы в начале и конце строк
         text = text.strip()
-
         return text
 
     def _remove_header(self, text: str, header: str) -> str:
@@ -1394,12 +1468,11 @@ class Command(BaseCommand):
         if not text or not header:
             return text
 
-        # Различные варианты написания заголовка
         patterns = [
-            rf'^{header}\s*',                    # "Description"
-            rf'^{header}:\s*',                    # "Description:"
-            rf'^{header}\s+translated\s+from\s*',  # "Description translated from"
-            rf'^{header}\s+translated\s+from:?\s*', # "Description translated from:"
+            rf'^{header}\s*',
+            rf'^{header}:\s*',
+            rf'^{header}\s+translated\s+from\s*',
+            rf'^{header}\s+translated\s+from:?\s*',
         ]
 
         for pattern in patterns:
@@ -1436,18 +1509,15 @@ class Command(BaseCommand):
         # Разделяем обычные поля и ManyToMany
         for field, value in parsed_data.items():
             if field in ['programming_languages', 'dbms']:
-                # ManyToMany поля обновляем сразу (их нельзя в bulk_update)
+                # ManyToMany поля обновляем сразу
                 self._update_m2m_field(ip_object,
                                       ProgrammingLanguage if field == 'programming_languages' else DBMS,
                                       field, value)
-                # Увеличиваем счётчик успешных обновлений для m2m
                 self.stats['success'] += 1
                 self.stats['by_type'][type_slug]['success'] += 1
             else:
-                # Обычные поля копим для пакетного обновления
                 update_data['data'][field] = value
 
-        # Возвращаем данные, если есть обычные поля для обновления
         return update_data if update_data['data'] else None
 
     # =========================================================================
@@ -1470,7 +1540,6 @@ class Command(BaseCommand):
             ))
             return
 
-        # Собираем объекты для обновления и определяем поля
         objects_to_update = []
         fields_to_update: Set[str] = set()
 
@@ -1482,16 +1551,13 @@ class Command(BaseCommand):
                     fields_to_update.add(field)
                 objects_to_update.append(ip_object)
 
-                # Обновляем статистику
                 self.stats['success'] += 1
                 self.stats['by_type'][item['type_slug']]['success'] += 1
 
             except IPObject.DoesNotExist:
-                # Запись могла быть удалена во время обработки
                 self.stats['errors'] += 1
                 logger.warning(f"IPObject with id {item['id']} not found during bulk update")
 
-        # Выполняем один SQL запрос на все объекты
         if objects_to_update:
             IPObject.objects.bulk_update(objects_to_update, fields_to_update)
 
@@ -1521,7 +1587,6 @@ class Command(BaseCommand):
         manager = getattr(ip_object, field_name)
         objects_to_add = []
 
-        # Создаём или получаем объекты
         for value in values:
             if isinstance(value, str) and value.strip():
                 obj, _ = model_class.objects.get_or_create(name=value.strip())
@@ -1529,12 +1594,10 @@ class Command(BaseCommand):
 
         if objects_to_add:
             if self.force:
-                # В принудительном режиме заменяем всё
                 manager.clear()
                 manager.add(*objects_to_add)
                 return True
             else:
-                # В обычном режиме только добавляем новые
                 existing = set(manager.all())
                 new_objects = [obj for obj in objects_to_add if obj not in existing]
                 if new_objects:
@@ -1574,7 +1637,6 @@ class Command(BaseCommand):
         if self.start_id:
             self.stdout.write(f"🎯 Стартовая позиция: ID {self.start_id}")
 
-        # Детальная статистика по типам
         if any(stats['total'] > 0 for stats in self.stats['by_type'].values()):
             self.stdout.write(self.style.SUCCESS("\n📊 ПО ТИПАМ РИД:"))
             for type_slug, stats in self.stats['by_type'].items():
